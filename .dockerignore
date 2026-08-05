@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+dist
+.vinext
+.wrangler
+.npm-cache
+npm-debug.log*
+README.md
+docker-compose.yml
