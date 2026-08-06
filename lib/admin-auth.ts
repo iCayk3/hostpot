@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-const COOKIE_NAME = "conecta_admin";
+const COOKIE_NAME = "conecta_admin_v2";
 const maxAge = 8 * 60 * 60;
 
 function secret() {

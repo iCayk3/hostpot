@@ -16,7 +16,7 @@ export async function POST(request: Request, context: Context) {
     const body = await request.json() as { username?:string; password?: string };
     if (!body.username||!body.password || !validAdminCredentials(body.username,body.password)) return Response.json({ error: "Credenciais inválidas" }, { status: 401 });
     const session = createAdminSession();
-    return Response.json({ authenticated: true }, { headers: { "Set-Cookie": `${adminCookie}=${session.value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${session.maxAge}` } });
+    return Response.json({ authenticated: true }, { headers: { "Set-Cookie": `${adminCookie}=${session.value}; Path=/; HttpOnly; SameSite=Strict` } });
   }
   if (action === "logout") {
     return Response.json({ authenticated: false }, { headers: { "Set-Cookie": `${adminCookie}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` } });

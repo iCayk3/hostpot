@@ -87,6 +87,13 @@ export default function Home() {
     } finally { setLoginBusy(false); }
   }
 
+  async function logoutAdmin() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setAdminAuthenticated(false);
+    setLoginPassword("");
+    setLoginUsername("admin");
+  }
+
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
@@ -264,7 +271,7 @@ export default function Home() {
         <section className="admin-view">
           <aside className="admin-sidebar">
             <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button><button onClick={()=>window.location.href="/usuarios"}>♙ <span>Usuários e permissões</span></button><button onClick={()=>window.location.href="/gestao"}>↗ <span>Painel operacional</span></button></div>
-            <div className="admin-user"><span>AD</span><div><strong>Administrador</strong><small>{loginUsername}</small></div></div>
+            <div className="admin-user"><span>AD</span><div><strong>Administrador</strong><small>{loginUsername}</small></div><button type="button" onClick={logoutAdmin}>Sair</button></div>
           </aside>
           <div className="admin-content">
             {adminSection !== "setup" ? <>
