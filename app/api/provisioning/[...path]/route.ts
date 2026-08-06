@@ -88,9 +88,14 @@ export async function POST(request: Request, context: RouteContext) {
   const { path } = await context.params;
   if (path[0] === "activations" && path.length === 1) {
     if (!isAdminRequest(request)) return json({ error: "Não autorizado" }, 401);
-    const activation = createActivation();
-    const base = publicBase(request);
-    return json({ ...activation, command: `/tool fetch url=\"${base}/api/provisioning/bootstrap/${activation.token}\" dst-path=conecta-bootstrap.rsc; /import file-name=conecta-bootstrap.rsc` }, 201);
+    try {
+      const activation = createActivation();
+      const base = publicBase(request);
+      return json({ ...activation, command: `/tool fetch url=\"${base}/api/provisioning/bootstrap/${activation.token}\" dst-path=conecta-bootstrap.rsc; /import file-name=conecta-bootstrap.rsc` }, 201);
+    } catch (error) {
+      console.error("Falha ao criar ativação:", error);
+      return json({ error: "Não foi possível gravar a ativação no banco de dados. Verifique o volume /data." }, 500);
+    }
   }
   if (path[0] === "register" && path[1]) {
     const id = registerDevice(path[1], parsePayload(await request.text()));

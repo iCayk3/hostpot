@@ -159,8 +159,11 @@ export default function Home() {
     setProvisioningBusy(true);
     try {
       const response = await fetch("/api/provisioning/activations", { method: "POST" });
-      const payload = await response.json() as Activation;
-      if (!response.ok) throw new Error("Não foi possível criar a ativação.");
+      const raw = await response.text();
+      let payload: Activation & { error?: string };
+      try { payload = JSON.parse(raw) as Activation & { error?: string }; }
+      catch { throw new Error(`O servidor respondeu com erro (${response.status}).`); }
+      if (!response.ok) throw new Error(payload.error || "Não foi possível criar a ativação.");
       setActivation(payload);
       notify("Código de ativação criado.");
     } catch (error) {

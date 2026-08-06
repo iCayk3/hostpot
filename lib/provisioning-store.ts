@@ -1,8 +1,6 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import type { Mode, RouterConfig } from "./router-script";
+import { database as db } from "./database";
 
 export type Device = {
   id: string; activationId: string; code: string; serial: string; model: string; architecture: string;
@@ -10,11 +8,6 @@ export type Device = {
   installedAt: string | null; config: RouterConfig | null; mode: Mode | null;
 };
 
-const dataDir = process.env.PROVISIONING_DATA_DIR || join(process.cwd(), "data");
-mkdirSync(dataDir, { recursive: true });
-const db = new DatabaseSync(join(dataDir, "conecta.db"));
-db.exec("PRAGMA journal_mode=WAL");
-db.exec("PRAGMA foreign_keys=ON");
 db.exec(`CREATE TABLE IF NOT EXISTS activations (
   id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,

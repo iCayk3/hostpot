@@ -12,7 +12,7 @@ docker compose up -d --build
 A aplicação estará disponível em `http://localhost` (porta 80). O estado do provisionamento é persistido no volume `conecta_data`.
 
 O container entra em uma rede Docker externa e a aplicação escuta diretamente na porta 80, sem tradução ou publicação de portas. Defina em `DOCKER_NETWORK` o nome da rede que já existe no Portainer.
-Para permitir a abertura dessa porta privilegiada no Linux, o processo inicia como root com todas as capacidades removidas, exceto `NET_BIND_SERVICE`.
+O processo permanece no usuário restrito `node`. O container permite portas não privilegiadas a partir de 0, possibilitando escutar na porta 80 sem executar a aplicação como root.
 
 Verifique a saúde do serviço:
 

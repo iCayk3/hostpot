@@ -1,12 +1,6 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { database as db } from "./database";
 
-const dir = process.env.PROVISIONING_DATA_DIR || join(process.cwd(), "data");
-mkdirSync(dir, { recursive: true });
-const db = new DatabaseSync(join(dir, "conecta.db"));
-db.exec("PRAGMA journal_mode=WAL");
 db.exec(`CREATE TABLE IF NOT EXISTS operators (id TEXT PRIMARY KEY, name TEXT NOT NULL, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)`);
 db.exec(`CREATE TABLE IF NOT EXISTS operator_devices (operator_id TEXT NOT NULL, device_id TEXT NOT NULL, PRIMARY KEY(operator_id,device_id))`);
 db.exec(`CREATE TABLE IF NOT EXISTS telemetry (device_id TEXT PRIMARY KEY, active_count INTEGER NOT NULL DEFAULT 0, host_count INTEGER NOT NULL DEFAULT 0, uptime TEXT, cpu INTEGER, free_memory TEXT, updated_at TEXT NOT NULL)`);
