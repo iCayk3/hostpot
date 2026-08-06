@@ -39,7 +39,7 @@ function permanentAgent(base:string,token:string){const telemetry=`${base}/api/o
 :local sessions ""
 :foreach item in=[/ip hotspot active find] do={:local left ""; :do {:set left [/ip hotspot active get \$item session-time-left]} on-error={}; :set sessions (\$sessions . [/ip hotspot active get \$item user] . "|" . [/ip hotspot active get \$item address] . "|" . [/ip hotspot active get \$item mac-address] . "|" . [/ip hotspot active get \$item uptime] . "|" . \$left . ";")}
 :local hosts ""
-:foreach item in=[/ip hotspot host find] do={:set hosts (\$hosts . [/ip hotspot host get \$item address] . "|" . [/ip hotspot host get \$item mac-address] . "|" . [/ip hotspot host get \$item authorized] . ";")}
+:foreach item in=[/ip hotspot host find] do={:local hostMac [/ip hotspot host get \$item mac-address]; :local hostName ""; :do {:local lease [/ip dhcp-server lease find where mac-address=\$hostMac]; :if ([:len \$lease] > 0) do={:set hostName [/ip dhcp-server lease get [:pick \$lease 0] host-name]}} on-error={}; :set hosts (\$hosts . [/ip hotspot host get \$item address] . "|" . \$hostMac . "|" . [/ip hotspot host get \$item authorized] . "|" . \$hostName . ";")}
 :local payload ("activeCount=" . \$activeCount . "\nhostCount=" . \$hostCount . "\nuptime=" . [/system resource get uptime] . "\ncpu=" . [/system resource get cpu-load] . "\nfreeMemory=" . [/system resource get free-memory] . "\nsessions=" . \$sessions . "\nhosts=" . \$hosts)
 /tool fetch url="${telemetry}" http-method=post http-header-field="Content-Type: text/plain" http-data=\$payload keep-result=no
 /tool fetch url="${commands}" dst-path=conecta-command.rsc
