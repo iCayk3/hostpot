@@ -35,3 +35,8 @@ export function validAdminPassword(password: string) {
 }
 
 export const adminCookie = COOKIE_NAME;
+
+const OPERATOR_COOKIE = "conecta_operator";
+export function createOperatorSession(userId:string){const expires=Math.floor(Date.now()/1000)+maxAge;const payload=`${userId}:${expires}`;return{value:`${Buffer.from(payload).toString("base64url")}.${sign(payload)}`,maxAge}}
+export function operatorFromRequest(request:Request){const cookie=request.headers.get("cookie")?.split(";").map(v=>v.trim()).find(v=>v.startsWith(`${OPERATOR_COOKIE}=`));if(!cookie)return null;const [encoded,signature]=cookie.slice(OPERATOR_COOKIE.length+1).split(".");if(!encoded||!signature)return null;const payload=Buffer.from(encoded,"base64url").toString();const [id,expires]=payload.split(":");if(Number(expires)<Math.floor(Date.now()/1000))return null;const a=Buffer.from(sign(payload)),b=Buffer.from(signature);return a.length===b.length&&timingSafeEqual(a,b)?id:null}
+export const operatorCookie=OPERATOR_COOKIE;

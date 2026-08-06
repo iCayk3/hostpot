@@ -31,7 +31,7 @@ db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_serial ON devices(serial)
 db.exec("CREATE INDEX IF NOT EXISTS idx_activations_token_hash ON activations(token_hash)");
 db.exec("PRAGMA optimize");
 
-const hash = (token: string) => createHmac("sha256", process.env.ACTIVATION_TOKEN_SECRET || "development-activation-secret").update(token).digest("hex");
+export const hashToken = (token: string) => createHmac("sha256", process.env.ACTIVATION_TOKEN_SECRET || "development-activation-secret").update(token).digest("hex");
 const now = () => new Date().toISOString();
 
 export function createActivation() {
@@ -41,12 +41,12 @@ export function createActivation() {
   const createdAt = now();
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
   db.prepare("INSERT INTO activations (id,code,token_hash,status,created_at,expires_at) VALUES (?,?,?,?,?,?)")
-    .run(id, code, hash(token), "awaiting", createdAt, expiresAt);
+    .run(id, code, hashToken(token), "awaiting", createdAt, expiresAt);
   return { id, code, token, status: "awaiting", createdAt, expiresAt };
 }
 
 function activationByToken(token: string) {
-  return db.prepare("SELECT * FROM activations WHERE token_hash=?").get(hash(token)) as Record<string, string | null> | undefined;
+  return db.prepare("SELECT * FROM activations WHERE token_hash=?").get(hashToken(token)) as Record<string, string | null> | undefined;
 }
 
 export function validateToken(token: string) {
@@ -58,12 +58,13 @@ export function validateToken(token: string) {
 export function registerDevice(token: string, values: Record<string, string>) {
   const activation = validateToken(token);
   if (!activation) return null;
-  const existing = db.prepare("SELECT id FROM devices WHERE activation_id=?").get(activation.id) as { id: string } | undefined;
+  const serial = values.serial || "unknown";
+  const existing = db.prepare("SELECT id FROM devices WHERE activation_id=? OR serial=?").get(activation.id, serial) as { id: string } | undefined;
   const id = existing?.id || randomUUID();
   const interfaces = values.interfaces?.split(",").map((item) => item.trim()).filter(Boolean) || [];
   if (existing) {
-    db.prepare("UPDATE devices SET serial=?,model=?,architecture=?,routeros_version=?,identity=?,interfaces_json=?,status=?,last_seen=? WHERE id=?")
-      .run(values.serial || "unknown", values.model || "unknown", values.architecture || "unknown", values.version || "unknown", values.identity || "MikroTik", JSON.stringify(interfaces), "detected", now(), id);
+    db.prepare("UPDATE devices SET activation_id=?,serial=?,model=?,architecture=?,routeros_version=?,identity=?,interfaces_json=?,status=?,last_seen=? WHERE id=?")
+      .run(activation.id, serial, values.model || "unknown", values.architecture || "unknown", values.version || "unknown", values.identity || "MikroTik", JSON.stringify(interfaces), "detected", now(), id);
   } else {
     db.prepare("INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?)")
       .run(id, activation.id, values.serial || "unknown", values.model || "unknown", values.architecture || "unknown", values.version || "unknown", values.identity || "MikroTik", JSON.stringify(interfaces), "detected", now(), null);

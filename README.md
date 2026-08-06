@@ -76,3 +76,8 @@ Faça o primeiro teste com acesso físico ao equipamento. O firewall final permi
 - Banco SQLite persistente em `/data/conecta.db`.
 - Entrega automática da configuração e confirmação da instalação.
 - Painel administrativo protegido por senha e sessão assinada.
+- Agente RouterOS permanente com telemetria a cada 15 segundos.
+- Tela operacional separada em `/gestao`.
+- Usuários vinculados somente aos MikroTiks autorizados em `/usuarios`.
+- Sessões, hosts, contadores e históricos obtidos do banco, sem números demonstrativos.
+- Fila de liberação real para 5, 10, 15, 30 ou 60 minutos.

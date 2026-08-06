@@ -31,6 +31,23 @@ function bootstrapScript(base: string, token: string) {
 `;
 }
 
+function permanentAgent(base:string,token:string){const telemetry=`${base}/api/operations/telemetry/${token}`,commands=`${base}/api/operations/commands/${token}`;return `/system scheduler remove [find name=conecta-agent]
+/system script remove [find name=conecta-agent]
+/system script add name=conecta-agent source={
+:local activeCount [:len [/ip hotspot active find]]
+:local hostCount [:len [/ip hotspot host find where authorized=no]]
+:local sessions ""
+:foreach item in=[/ip hotspot active find] do={:local left ""; :do {:set left [/ip hotspot active get \$item session-time-left]} on-error={}; :set sessions (\$sessions . [/ip hotspot active get \$item user] . "|" . [/ip hotspot active get \$item address] . "|" . [/ip hotspot active get \$item mac-address] . "|" . [/ip hotspot active get \$item uptime] . "|" . \$left . ";")}
+:local hosts ""
+:foreach item in=[/ip hotspot host find] do={:set hosts (\$hosts . [/ip hotspot host get \$item address] . "|" . [/ip hotspot host get \$item mac-address] . "|" . [/ip hotspot host get \$item authorized] . ";")}
+:local payload ("activeCount=" . \$activeCount . "\nhostCount=" . \$hostCount . "\nuptime=" . [/system resource get uptime] . "\ncpu=" . [/system resource get cpu-load] . "\nfreeMemory=" . [/system resource get free-memory] . "\nsessions=" . \$sessions . "\nhosts=" . \$hosts)
+/tool fetch url="${telemetry}" http-method=post http-header-field="Content-Type: text/plain" http-data=\$payload keep-result=no
+/tool fetch url="${commands}" dst-path=conecta-command.rsc
+/import file-name=conecta-command.rsc
+}
+/system scheduler add name=conecta-agent interval=15s start-time=startup on-event=conecta-agent
+/system script run conecta-agent`}
+
 function parsePayload(raw: string) {
   return Object.fromEntries(raw.split(/\r?\n/).map((line) => {
     const position = line.indexOf("=");
@@ -52,11 +69,12 @@ export async function GET(request: Request, context: RouteContext) {
     if (!result) return text(":error \"Ativacao invalida\"", 404);
     if (!result.config || !result.mode) return text(":log info \"Conecta+: aguardando configuracao no painel\"");
     const confirmUrl = `${publicBase(request)}/api/provisioning/confirm/${path[1]}`;
+    const base=publicBase(request);
     return text(`${buildRouterScript(result.config, result.mode)}
+${permanentAgent(base,path[1])}
 /tool fetch url="${confirmUrl}" http-method=post http-data="status=installed" keep-result=no
-/system scheduler remove [find name=conecta-poll]
-/system script remove [find name=conecta-poll]
 :log info "Conecta+: provisionamento finalizado"
+/system scheduler remove [find name=conecta-poll]
 `);
   }
   return json({ error: "Rota não encontrada" }, 404);

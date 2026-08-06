@@ -12,23 +12,18 @@ type ProvisionedDevice = {
 type Activation = { code: string; command: string; expiresAt: string };
 
 const durations = [
-  { minutes: 30, label: "30 min", note: "Acesso rápido" },
-  { minutes: 60, label: "1 hora", note: "Mais escolhido" },
-  { minutes: 120, label: "2 horas", note: "Para ficar à vontade" },
-  { minutes: 240, label: "4 horas", note: "Dia inteiro" },
-];
-
-const initialSessions = [
-  { device: "iPhone de Marina", mac: "A4:83:E7:••:91:2B", time: "1h 42min", status: "Ativo" },
-  { device: "Galaxy A55", mac: "6C:5A:B0:••:3F:18", time: "48min", status: "Ativo" },
-  { device: "Notebook Lenovo", mac: "D8:12:65:••:C4:09", time: "12min", status: "Expirando" },
+  { minutes: 5, label: "5 min", note: "Acesso rápido" },
+  { minutes: 10, label: "10 min", note: "Pausa curta" },
+  { minutes: 15, label: "15 min", note: "Uso essencial" },
+  { minutes: 30, label: "30 min", note: "Mais escolhido" },
+  { minutes: 60, label: "60 min", note: "Acesso estendido" },
 ];
 
 export default function Home() {
   const [view, setView] = useState<View>("portal");
   const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const [mode, setMode] = useState<Mode>("self");
-  const [duration, setDuration] = useState(60);
+  const [duration, setDuration] = useState(30);
   const [customMinutes, setCustomMinutes] = useState(90);
   const [connected, setConnected] = useState(false);
   const [toast, setToast] = useState("");
@@ -40,6 +35,7 @@ export default function Home() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [overviewData,setOverviewData]=useState<{totals:{routers:number;active:number;hosts:number;updated_at:string|null};sessions:Array<{identity:string;username:string;address:string;mac:string;uptime:string;time_left:string}>}>({totals:{routers:0,active:0,hosts:0,updated_at:null},sessions:[]});
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
     guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254",
@@ -71,6 +67,7 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {});
   }, []);
+  useEffect(()=>{if(view!=="admin"||!adminAuthenticated)return;const load=()=>fetch("/api/operations/overview",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(p=>p&&setOverviewData(p));load();const t=window.setInterval(load,10000);return()=>window.clearInterval(t)},[view,adminAuthenticated]);
 
   function openAdministration() {
     if (adminAuthenticated) return setView("admin");
@@ -262,7 +259,7 @@ export default function Home() {
       ) : (
         <section className="admin-view">
           <aside className="admin-sidebar">
-            <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button></div>
+            <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button><button onClick={()=>window.location.href="/usuarios"}>♙ <span>Usuários e permissões</span></button><button onClick={()=>window.location.href="/gestao"}>↗ <span>Painel operacional</span></button></div>
             <div className="admin-user"><span>JS</span><div><strong>João Silva</strong><small>Administrador</small></div></div>
           </aside>
           <div className="admin-content">
@@ -270,9 +267,9 @@ export default function Home() {
             {adminSection === "overview" && <>
             <div className="admin-title"><div><span className="eyebrow">PAINEL DE CONTROLE</span><h1>Boa tarde, João.</h1><p>Acompanhe e controle os acessos da sua rede.</p></div><button className="outline-button" onClick={() => notify("Dados atualizados.")}>↻ Atualizar dados</button></div>
             <div className="stats-grid">
-              <article><span className="stat-icon green">↗</span><small>Conectados agora</small><strong>24</strong><em>+8% na última hora</em></article>
-              <article><span className="stat-icon blue">◷</span><small>Acessos hoje</small><strong>186</strong><em>Tempo médio: 1h 18min</em></article>
-              <article><span className="stat-icon orange">⌁</span><small>Aguardando liberação</small><strong>{mode === "admin" ? 3 : 0}</strong><em>{mode === "admin" ? "Requer sua atenção" : "Modo automático ativo"}</em></article>
+              <article><span className="stat-icon green">↗</span><small>Conectados agora</small><strong>{overviewData.totals.active}</strong><em>Telemetria real dos roteadores</em></article>
+              <article><span className="stat-icon blue">◷</span><small>MikroTiks cadastrados</small><strong>{overviewData.totals.routers}</strong><em>{overviewData.totals.updated_at?`Atualizado ${new Date(overviewData.totals.updated_at).toLocaleTimeString("pt-BR")}`:"Sem telemetria"}</em></article>
+              <article><span className="stat-icon orange">⌁</span><small>Hosts aguardando</small><strong>{overviewData.totals.hosts}</strong><em>Dados recebidos do HotSpot</em></article>
             </div>
 
             <div className="control-grid">
@@ -286,10 +283,9 @@ export default function Home() {
               </article>
 
               <article className="quick-release">
-                <div className="section-heading"><div><h2>Liberação rápida</h2><p>Conceda acesso a um dispositivo.</p></div></div>
-                <label>DISPOSITIVO / MAC<input defaultValue="7C:8B:CA:42:11" /></label>
-                <label>TEMPO DE ACESSO<select value={customMinutes} onChange={(e) => setCustomMinutes(Number(e.target.value))}><option value={30}>30 minutos</option><option value={60}>1 hora</option><option value={90}>1 hora e 30 minutos</option><option value={120}>2 horas</option><option value={240}>4 horas</option></select></label>
-                <button onClick={() => notify(`Acesso liberado por ${customMinutes} minutos.`)}>Liberar acesso <span>→</span></button>
+                <div className="section-heading"><div><h2>Painel operacional</h2><p>Liberações reais são feitas na área separada por usuário e MikroTik.</p></div></div>
+                <div className="request-box"><span className="device-icon">⌁</span><div><strong>Acesso com permissão individual</strong><small>Somente equipamentos autorizados aparecem para cada operador.</small></div></div>
+                <button onClick={() => window.location.href="/gestao"}>Abrir gestão de acessos <span>→</span></button>
               </article>
             </div>
 
@@ -299,7 +295,7 @@ export default function Home() {
               <div className="section-heading"><div><h2>Sessões ativas</h2><p>Dispositivos conectados à rede neste momento.</p></div>{adminSection === "overview" && <button className="text-button" onClick={() => setAdminSection("sessions")}>Ver todas →</button>}</div>
               <div className="session-table">
                 <div className="table-row table-head"><span>DISPOSITIVO</span><span>IDENTIFICAÇÃO</span><span>TEMPO RESTANTE</span><span>STATUS</span><span /></div>
-                {initialSessions.map((session) => <div className="table-row" key={session.mac}><span><i className="device-dot">⌁</i><strong>{session.device}</strong></span><span>{session.mac}</span><span>{session.time}</span><span><b className={session.status === "Ativo" ? "status-active" : "status-warning"}>{session.status}</b></span><span><button onClick={() => notify(`Ações de ${session.device} abertas.`)} aria-label={`Opções para ${session.device}`}>•••</button></span></div>)}
+                {overviewData.sessions.length===0?<div className="empty">Nenhuma sessão recebida dos MikroTiks.</div>:overviewData.sessions.map((session) => <div className="table-row" key={`${session.identity}-${session.mac}`}><span><i className="device-dot">⌁</i><strong>{session.username||session.identity}</strong></span><span>{session.mac}</span><span>{session.time_left||session.uptime||"—"}</span><span><b className="status-active">Ativo</b></span><span><button onClick={() => notify(`${session.identity} · ${session.address}`)} aria-label={`Detalhes de ${session.mac}`}>•••</button></span></div>)}
               </div>
             </article>
             </> : <section className="setup-page">
