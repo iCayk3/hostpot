@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { buildRouterScript, type Mode, type RouterConfig } from "@/lib/router-script";
 
 type View = "portal" | "admin";
-type AdminSection = "overview" | "setup";
+type AdminSection = "overview" | "sessions" | "setup";
 type ProvisionedDevice = {
   id: string; code: string; serial: string; model: string; architecture: string; routerosVersion: string;
   identity: string; interfaces: string[]; status: string; lastSeen: string; installedAt: string | null;
@@ -37,6 +37,9 @@ export default function Home() {
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [provisioningBusy, setProvisioningBusy] = useState(false);
   const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginBusy, setLoginBusy] = useState(false);
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
     guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254",
@@ -69,13 +72,20 @@ export default function Home() {
     fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {});
   }, []);
 
-  async function openAdministration() {
+  function openAdministration() {
     if (adminAuthenticated) return setView("admin");
-    const password = window.prompt("Senha do painel administrativo:");
-    if (!password) return;
-    const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-    if (!response.ok) return notify("Senha administrativa inválida.");
-    setAdminAuthenticated(true); setView("admin"); notify("Painel administrativo liberado.");
+    setLoginOpen(true);
+  }
+
+  async function submitAdminLogin(event: React.FormEvent) {
+    event.preventDefault();
+    if (!loginPassword) return;
+    setLoginBusy(true);
+    try {
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: loginPassword }) });
+      if (!response.ok) return notify("Senha administrativa inválida.");
+      setAdminAuthenticated(true); setLoginOpen(false); setLoginPassword(""); setView("admin"); notify("Painel administrativo liberado.");
+    } finally { setLoginBusy(false); }
   }
 
   function notify(message: string) {
@@ -94,9 +104,40 @@ export default function Home() {
     setRouterConfig((current) => ({ ...current, [field]: value }));
   }
 
+  async function copyText(value: string) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(value);
+        return true;
+      } catch {
+        // Alguns navegadores negam a permissão mesmo em HTTPS; usa o fallback abaixo.
+      }
+    }
+
+    const field = document.createElement("textarea");
+    const activeElement = document.activeElement as HTMLElement | null;
+    field.value = value;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    field.style.top = "0";
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } finally {
+      field.remove();
+      activeElement?.focus();
+    }
+    return copied;
+  }
+
   async function copyScript() {
-    await navigator.clipboard.writeText(routerScript);
-    notify("Script copiado para a área de transferência.");
+    const copied = await copyText(routerScript);
+    notify(copied ? "Script copiado para a área de transferência." : "O navegador bloqueou a cópia. Use Baixar .rsc.");
   }
 
   function downloadScript() {
@@ -123,8 +164,8 @@ export default function Home() {
 
   async function copyActivationCommand() {
     if (!activation) return;
-    await navigator.clipboard.writeText(activation.command);
-    notify("Comando de vínculo copiado.");
+    const copied = await copyText(activation.command);
+    notify(copied ? "Comando de vínculo copiado." : "O navegador bloqueou a cópia. Selecione o comando manualmente.");
   }
 
   function useDetectedInterfaces(device: ProvisionedDevice) {
@@ -221,11 +262,12 @@ export default function Home() {
       ) : (
         <section className="admin-view">
           <aside className="admin-sidebar">
-            <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button></div>
+            <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button></div>
             <div className="admin-user"><span>JS</span><div><strong>João Silva</strong><small>Administrador</small></div></div>
           </aside>
           <div className="admin-content">
-            {adminSection === "overview" ? <>
+            {adminSection !== "setup" ? <>
+            {adminSection === "overview" && <>
             <div className="admin-title"><div><span className="eyebrow">PAINEL DE CONTROLE</span><h1>Boa tarde, João.</h1><p>Acompanhe e controle os acessos da sua rede.</p></div><button className="outline-button" onClick={() => notify("Dados atualizados.")}>↻ Atualizar dados</button></div>
             <div className="stats-grid">
               <article><span className="stat-icon green">↗</span><small>Conectados agora</small><strong>24</strong><em>+8% na última hora</em></article>
@@ -251,11 +293,13 @@ export default function Home() {
               </article>
             </div>
 
-            <article className="sessions-card">
-              <div className="section-heading"><div><h2>Sessões ativas</h2><p>Dispositivos conectados à rede neste momento.</p></div><button className="text-button">Ver todas →</button></div>
+            </>}
+            {adminSection === "sessions" && <div className="admin-title"><div><span className="eyebrow">CONTROLE DE ACESSO</span><h1>Sessões ativas</h1><p>Consulte e gerencie os dispositivos conectados neste momento.</p></div><button className="outline-button" onClick={() => notify("Sessões atualizadas.")}>↻ Atualizar sessões</button></div>}
+            <article className="sessions-card" id="sessoes-ativas">
+              <div className="section-heading"><div><h2>Sessões ativas</h2><p>Dispositivos conectados à rede neste momento.</p></div>{adminSection === "overview" && <button className="text-button" onClick={() => setAdminSection("sessions")}>Ver todas →</button>}</div>
               <div className="session-table">
                 <div className="table-row table-head"><span>DISPOSITIVO</span><span>IDENTIFICAÇÃO</span><span>TEMPO RESTANTE</span><span>STATUS</span><span /></div>
-                {initialSessions.map((session) => <div className="table-row" key={session.mac}><span><i className="device-dot">⌁</i><strong>{session.device}</strong></span><span>{session.mac}</span><span>{session.time}</span><span><b className={session.status === "Ativo" ? "status-active" : "status-warning"}>{session.status}</b></span><span><button aria-label={`Opções para ${session.device}`}>•••</button></span></div>)}
+                {initialSessions.map((session) => <div className="table-row" key={session.mac}><span><i className="device-dot">⌁</i><strong>{session.device}</strong></span><span>{session.mac}</span><span>{session.time}</span><span><b className={session.status === "Ativo" ? "status-active" : "status-warning"}>{session.status}</b></span><span><button onClick={() => notify(`Ações de ${session.device} abertas.`)} aria-label={`Opções para ${session.device}`}>•••</button></span></div>)}
               </div>
             </article>
             </> : <section className="setup-page">
@@ -265,7 +309,7 @@ export default function Home() {
                 {!activation ? <button className="activation-create" onClick={createNewActivation} disabled={provisioningBusy}>{provisioningBusy ? "Gerando..." : "Gerar código de ativação"}</button> : <div className="activation-ready">
                   <div className="activation-code"><small>CÓDIGO TEMPORÁRIO</small><strong>{activation.code}</strong><span>Expira em 30 minutos</span></div>
                   <code>{activation.command}</code>
-                  <button onClick={copyActivationCommand}>Copiar comando</button>
+                  <button type="button" onClick={copyActivationCommand}>Copiar comando</button>
                 </div>}
               </article>
               <article className="detected-card">
@@ -313,7 +357,7 @@ export default function Home() {
                 <aside className="script-card">
                   <div className="script-head"><div><span>ROUTEROS 7</span><strong>conecta-{mode === "self" ? "automatico" : "administrador"}.rsc</strong></div><span className="script-lines">{routerScript.split("\n").length} linhas</span></div>
                   <pre>{routerScript}</pre>
-                  <div className="script-actions"><button className="copy-button" onClick={copyScript}>Copiar script</button><button className="download-button" onClick={downloadScript}>Baixar .rsc ↓</button></div>
+                  <div className="script-actions"><button type="button" className="copy-button" onClick={copyScript}>Copiar script</button><button type="button" className="download-button" onClick={downloadScript}>Baixar .rsc ↓</button></div>
                 </aside>
               </div>
               <article className="install-steps"><div><span>01</span><strong>Internet e comando</strong><small>O técnico deixa a WAN online e cola o comando de vínculo.</small></div><i>→</i><div><span>02</span><strong>Servidor configura</strong><small>Escolha as portas e libere a instalação pelo painel.</small></div><i>→</i><div><span>03</span><strong>Confirmação automática</strong><small>O equipamento instala, remove o agente e confirma o resultado.</small></div></article>
@@ -321,6 +365,17 @@ export default function Home() {
           </div>
         </section>
       )}
+      {loginOpen && <div className="login-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setLoginOpen(false); }}>
+        <form className="login-modal" onSubmit={submitAdminLogin} role="dialog" aria-modal="true" aria-labelledby="login-title">
+          <button type="button" className="login-close" onClick={() => setLoginOpen(false)} aria-label="Fechar login">×</button>
+          <span className="brand-mark"><i /><i /><i /></span>
+          <span className="eyebrow">ÁREA PROTEGIDA</span>
+          <h2 id="login-title">Acessar administração</h2>
+          <p>Informe a senha configurada no servidor.</p>
+          <label>SENHA ADMINISTRATIVA<input autoFocus type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} autoComplete="current-password" /></label>
+          <button type="submit" disabled={loginBusy || !loginPassword}>{loginBusy ? "Entrando..." : "Entrar no painel →"}</button>
+        </form>
+      </div>}
       {toast && <div className="toast">✓ {toast}</div>}
     </main>
   );
