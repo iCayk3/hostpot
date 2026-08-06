@@ -6,7 +6,9 @@ services:
     image: conecta-mais-hotspot:latest
     container_name: conecta-mais
     restart: unless-stopped
-    network_mode: host
+    user: "0:0"
+    networks:
+      - conecta_external
     environment:
       NODE_ENV: production
       PORT: 80
@@ -33,3 +35,8 @@ services:
 
 volumes:
   conecta_data:
+
+networks:
+  conecta_external:
+    external: true
+    name: "${DOCKER_NETWORK:-local-rede-external}"
