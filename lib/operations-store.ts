@@ -52,8 +52,9 @@ export function deviceDashboard(deviceId: string, operatorId?: string) {
   const sessions = db.prepare(`SELECT s.username,s.address,s.mac,s.uptime,s.time_left,s.updated_at,c.label,c.detected_name FROM hotspot_sessions s LEFT JOIN client_devices c ON c.device_id=s.device_id AND c.mac=s.mac WHERE s.device_id=? ORDER BY s.updated_at DESC`).all(deviceId);
   const hosts = db.prepare(`SELECT h.address,h.mac,h.authorized,h.updated_at,c.label,c.detected_name FROM hotspot_hosts h LEFT JOIN client_devices c ON c.device_id=h.device_id AND c.mac=h.mac WHERE h.device_id=? ORDER BY h.updated_at DESC`).all(deviceId);
   const releases = db.prepare("SELECT id,mac,minutes,status,created_at,executed_at FROM access_releases WHERE device_id=? ORDER BY created_at DESC LIMIT 50").all(deviceId);
+  const adminAccesses=(db.prepare(`SELECT r.id,r.mac,r.minutes,r.status,r.created_at,r.executed_at,c.label,c.detected_name FROM access_releases r LEFT JOIN client_devices c ON c.device_id=r.device_id AND c.mac=r.mac WHERE r.device_id=? AND r.status IN ('queued','delivered') ORDER BY r.created_at DESC`).all(deviceId) as any[]).map(row=>{if(!row.executed_at)return{...row,expires_at:null,remaining_seconds:null};const expiresAt=new Date(new Date(row.executed_at).getTime()+Number(row.minutes)*60000).toISOString();return{...row,expires_at:expiresAt,remaining_seconds:Math.max(0,Math.floor((new Date(expiresAt).getTime()-Date.now())/1000))}}).filter(row=>row.status==='queued'||Number(row.remaining_seconds)>0);
   const durationStats=db.prepare(`SELECT duration_minutes minutes,COUNT(*) total FROM access_events WHERE device_id=? AND started_at>=datetime('now','-1 day') GROUP BY duration_minutes ORDER BY duration_minutes`).all(deviceId);
-  return { device, sessions, hosts, releases,durationStats };
+  return { device, sessions, hosts, releases,adminAccesses,durationStats };
 }
 
 function deviceIdByTokenHash(tokenHash: string) {
