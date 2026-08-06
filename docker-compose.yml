@@ -14,6 +14,8 @@ services:
       PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:3000}"
       PROVISIONING_DATA_DIR: /data
       ACTIVATION_TOKEN_SECRET: "${ACTIVATION_TOKEN_SECRET}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      ADMIN_SESSION_SECRET: "${ADMIN_SESSION_SECRET}"
     volumes:
       - conecta_data:/data
     security_opt:

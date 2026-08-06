@@ -22,7 +22,7 @@ curl http://localhost:3000/api/health
 1. Publique este diretório em um repositório GitHub.
 2. No Portainer, abra **Stacks → Add stack → Repository**.
 3. Informe a URL do repositório e use `docker-compose.yml` como caminho do Compose.
-4. Cadastre as variáveis `PUBLIC_BASE_URL`, `APP_PORT` e `ACTIVATION_TOKEN_SECRET`.
+4. Cadastre as variáveis `PUBLIC_BASE_URL`, `APP_PORT`, `ACTIVATION_TOKEN_SECRET`, `ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET`.
 5. Faça o deploy da Stack.
 
 O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Proxy Manager, Traefik ou Cloudflare Tunnel. O MikroTik deverá acessar `PUBLIC_BASE_URL` por HTTPS com certificado válido.
@@ -34,6 +34,8 @@ O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Prox
 | `APP_PORT` | Porta publicada no host, padrão `3000` |
 | `PUBLIC_BASE_URL` | Endereço HTTPS público da aplicação |
 | `ACTIVATION_TOKEN_SECRET` | Segredo usado futuramente nos códigos de ativação |
+| `ADMIN_PASSWORD` | Senha para abrir o painel administrativo |
+| `ADMIN_SESSION_SECRET` | Assinatura das sessões administrativas |
 | `PROVISIONING_DATA_DIR` | Diretório interno persistente, configurado como `/data` |
 
 Nunca publique o arquivo `.env`, senhas de roteadores, backups ou tokens no GitHub.
@@ -48,6 +50,19 @@ npm run dev
 npm run build
 ```
 
+## Teste de bancada
+
+1. Implante a Stack e confirme que `/api/health` responde com `status: ok`.
+2. Entre em **Administração → Instalar MikroTik** usando `ADMIN_PASSWORD`.
+3. Clique em **Gerar código de ativação** e copie o comando.
+4. No MikroTik resetado, deixe a WAN com internet e execute o comando no terminal.
+5. Aguarde o equipamento aparecer no painel, confira as interfaces e selecione-o.
+6. Ajuste as portas, endereços e modo de acesso.
+7. Clique em **Liberar instalação automática**.
+8. Aguarde o estado mudar para **Instalado**.
+
+Faça o primeiro teste com acesso físico ao equipamento. O firewall final permite gerenciamento somente pela porta e rede definidas no formulário.
+
 ## Estado atual
 
 - Portal do visitante responsivo.
@@ -56,5 +71,8 @@ npm run build
 - Gerador de script RouterOS 7 com DHCP, HotSpot, NAT e firewall.
 - Imagem Docker e Stack para Portainer.
 - Endpoint de saúde para monitoramento.
-
-O registro automático do MikroTik, emissão dos códigos de ativação e armazenamento dos equipamentos serão a próxima etapa do backend.
+- Registro automático com código temporário e comando único.
+- Detecção de modelo, serial, versão e interfaces.
+- Banco SQLite persistente em `/data/conecta.db`.
+- Entrega automática da configuração e confirmação da instalação.
+- Painel administrativo protegido por senha e sessão assinada.

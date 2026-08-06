@@ -1,63 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { buildRouterScript, type Mode, type RouterConfig } from "@/lib/router-script";
 
-type Mode = "self" | "admin";
 type View = "portal" | "admin";
 type AdminSection = "overview" | "setup";
-
-type RouterConfig = {
-  identity: string; wan: string; management: string; guests: string;
-  guestSubnet: string; guestGateway: string; guestPool: string;
-  managementAddress: string; dnsName: string; adminUser: string; adminPassword: string;
-  rateLimit: string;
+type ProvisionedDevice = {
+  id: string; code: string; serial: string; model: string; architecture: string; routerosVersion: string;
+  identity: string; interfaces: string[]; status: string; lastSeen: string; installedAt: string | null;
 };
-
-function buildRouterScript(config: RouterConfig, mode: Mode) {
-  const guestPorts = config.guests.split(",").map((port) => port.trim()).filter(Boolean);
-  const profiles = [["5m","5m"],["10m","10m"],["15m","15m"],["30m","30m"],["60m","1h"]];
-  const lines = [
-    "# Conecta+ | Instalacao RouterOS 7 em equipamento resetado sem configuracao padrao",
-    `# Modo: ${mode === "self" ? "visitante escolhe o tempo" : "administrador libera o tempo"}`,
-    "# Revise os nomes das interfaces antes de importar. Mantenha acesso fisico ao equipamento.",
-    "",
-    `/system identity set name=\"${config.identity}\"`,
-    "/interface list add name=WAN comment=\"Conecta+\"",
-    `/interface list member add list=WAN interface=${config.wan}`,
-    "/interface bridge add name=bridge-hotspot protocol-mode=rstp comment=\"Rede isolada de visitantes\"",
-    ...guestPorts.map((port) => `/interface bridge port add bridge=bridge-hotspot interface=${port} horizon=1`),
-    `/ip dhcp-client add interface=${config.wan} disabled=no use-peer-dns=no comment=\"Internet\"`,
-    `/ip address add address=${config.guestGateway}/${config.guestSubnet.split("/")[1] || "24"} interface=bridge-hotspot comment=\"Gateway HotSpot\"`,
-    `/ip address add address=${config.managementAddress} interface=${config.management} comment=\"Gerencia local\"`,
-    "/ip pool add name=pool-hotspot ranges=" + config.guestPool,
-    "/ip dhcp-server add name=dhcp-hotspot interface=bridge-hotspot address-pool=pool-hotspot lease-time=1h disabled=no",
-    `/ip dhcp-server network add address=${config.guestSubnet} gateway=${config.guestGateway} dns-server=${config.guestGateway}`,
-    "/ip dns set allow-remote-requests=yes servers=1.1.1.1,8.8.8.8",
-    `/ip hotspot profile add name=conecta-hotspot hotspot-address=${config.guestGateway} dns-name=${config.dnsName} html-directory=hotspot login-by=http-chap,cookie http-cookie-lifetime=1h`,
-    "/ip hotspot add name=hotspot-conecta interface=bridge-hotspot address-pool=pool-hotspot profile=conecta-hotspot disabled=no",
-    ...profiles.map(([name,time]) => `/ip hotspot user profile add name=conecta-${name} session-timeout=${time} idle-timeout=2m keepalive-timeout=2m shared-users=${mode === "self" ? "200" : "1"} rate-limit=\"${config.rateLimit}\" add-mac-cookie=no`),
-    ...(mode === "self" ? profiles.map(([name]) => `/ip hotspot user add name=portal-${name} password=Conecta${name} profile=conecta-${name} comment=\"Portal automatico\"`) : []),
-    "/ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment=\"Conecta+ NAT\"",
-    "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"Conecta+ estabelecidas\"",
-    "/ip firewall filter add chain=input connection-state=invalid action=drop comment=\"Conecta+ invalidas\"",
-    "/ip firewall filter add chain=input protocol=icmp action=accept comment=\"Conecta+ diagnostico\"",
-    `/ip firewall filter add chain=input in-interface=${config.management} action=accept comment=\"Conecta+ gerencia somente porta dedicada\"`,
-    "/ip firewall filter add chain=input in-interface=bridge-hotspot protocol=udp dst-port=53,67,68 action=accept comment=\"Conecta+ DNS DHCP\"",
-    "/ip firewall filter add chain=input in-interface=bridge-hotspot protocol=tcp dst-port=53 action=accept comment=\"Conecta+ DNS TCP\"",
-    "/ip firewall filter add chain=input action=drop comment=\"Conecta+ bloqueia acesso ao roteador\"",
-    "/ip firewall filter add chain=forward connection-state=established,related action=accept comment=\"Conecta+ forward estabelecidas\"",
-    "/ip firewall filter add chain=forward connection-state=invalid action=drop comment=\"Conecta+ forward invalidas\"",
-    "/ip firewall filter add chain=forward in-interface=bridge-hotspot out-interface-list=WAN action=accept comment=\"Conecta+ visitantes para internet\"",
-    "/ip firewall filter add chain=forward in-interface=bridge-hotspot action=drop comment=\"Conecta+ isola visitantes da rede interna\"",
-    "/ip firewall filter add chain=forward action=drop comment=\"Conecta+ bloqueio final\"",
-    `/user add name=${config.adminUser} password=\"${config.adminPassword}\" group=full address=${config.managementAddress.split("/")[0].replace(/\.1$/, ".0")}/24 comment=\"Administrador Conecta+\"`,
-    "/ip service disable telnet,ftp,www,api",
-    `/ip service set winbox address=${config.managementAddress.split("/")[0].replace(/\.1$/, ".0")}/24`,
-    "/system clock set time-zone-name=America/Sao_Paulo",
-    ":log info \"Conecta+: configuracao concluida. Envie a pasta hotspot personalizada em Files.\"",
-  ];
-  return lines.join("\n");
-}
+type Activation = { code: string; command: string; expiresAt: string };
 
 const durations = [
   { minutes: 30, label: "30 min", note: "Acesso rápido" },
@@ -80,6 +32,11 @@ export default function Home() {
   const [customMinutes, setCustomMinutes] = useState(90);
   const [connected, setConnected] = useState(false);
   const [toast, setToast] = useState("");
+  const [activation, setActivation] = useState<Activation | null>(null);
+  const [devices, setDevices] = useState<ProvisionedDevice[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
+  const [provisioningBusy, setProvisioningBusy] = useState(false);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
     guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254",
@@ -92,6 +49,34 @@ export default function Home() {
     if (preset) return preset.label;
     return duration < 60 ? `${duration} min` : `${Math.floor(duration / 60)}h ${duration % 60 ? `${duration % 60}min` : ""}`;
   }, [duration]);
+
+  async function refreshDevices() {
+    const response = await fetch("/api/provisioning/devices", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json() as { devices: ProvisionedDevice[] };
+    setDevices(payload.devices);
+    if (!selectedDeviceId && payload.devices[0]) setSelectedDeviceId(payload.devices[0].id);
+  }
+
+  useEffect(() => {
+    if (adminSection !== "setup") return;
+    refreshDevices();
+    const timer = window.setInterval(refreshDevices, 5000);
+    return () => window.clearInterval(timer);
+  }, [adminSection, selectedDeviceId]);
+
+  useEffect(() => {
+    fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {});
+  }, []);
+
+  async function openAdministration() {
+    if (adminAuthenticated) return setView("admin");
+    const password = window.prompt("Senha do painel administrativo:");
+    if (!password) return;
+    const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
+    if (!response.ok) return notify("Senha administrativa inválida.");
+    setAdminAuthenticated(true); setView("admin"); notify("Painel administrativo liberado.");
+  }
 
   function notify(message: string) {
     setToast(message);
@@ -123,6 +108,53 @@ export default function Home() {
     notify("Arquivo de instalação gerado.");
   }
 
+  async function createNewActivation() {
+    setProvisioningBusy(true);
+    try {
+      const response = await fetch("/api/provisioning/activations", { method: "POST" });
+      const payload = await response.json() as Activation;
+      if (!response.ok) throw new Error("Não foi possível criar a ativação.");
+      setActivation(payload);
+      notify("Código de ativação criado.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Falha ao criar ativação.");
+    } finally { setProvisioningBusy(false); }
+  }
+
+  async function copyActivationCommand() {
+    if (!activation) return;
+    await navigator.clipboard.writeText(activation.command);
+    notify("Comando de vínculo copiado.");
+  }
+
+  function useDetectedInterfaces(device: ProvisionedDevice) {
+    const physical = device.interfaces.filter((name) => /^(ether|sfp|wifi|wlan)/i.test(name));
+    setRouterConfig((current) => ({
+      ...current,
+      identity: `MK-CONNECTA-${device.serial.slice(-4).toUpperCase()}`,
+      wan: physical[0] || current.wan,
+      management: physical[1] || current.management,
+      guests: physical.slice(2).join(",") || current.guests,
+    }));
+    setSelectedDeviceId(device.id);
+    notify("Interfaces detectadas aplicadas ao formulário.");
+  }
+
+  async function sendConfiguration() {
+    if (!selectedDeviceId) return notify("Selecione um MikroTik detectado.");
+    setProvisioningBusy(true);
+    try {
+      const response = await fetch(`/api/provisioning/devices/${selectedDeviceId}/configure`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: routerConfig, mode }),
+      });
+      if (!response.ok) throw new Error("Não foi possível liberar a configuração.");
+      notify("Configuração liberada. O MikroTik instalará em até 30 segundos.");
+      await refreshDevices();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Falha no provisionamento.");
+    } finally { setProvisioningBusy(false); }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -132,7 +164,7 @@ export default function Home() {
         </button>
         <nav className="view-switch" aria-label="Navegação principal">
           <button className={view === "portal" ? "active" : ""} onClick={() => setView("portal")}>Portal do visitante</button>
-          <button className={view === "admin" ? "active" : ""} onClick={() => setView("admin")}>Administração</button>
+          <button className={view === "admin" ? "active" : ""} onClick={openAdministration}>Administração</button>
         </nav>
         <span className="network-pill"><i /> Rede online</span>
       </header>
@@ -228,6 +260,23 @@ export default function Home() {
             </article>
             </> : <section className="setup-page">
               <div className="admin-title"><div><span className="eyebrow">IMPLANTAÇÃO GUIADA</span><h1>Configurar novo MikroTik</h1><p>Gere uma instalação completa para RouterOS 7 resetado, com HotSpot e firewall.</p></div><span className="setup-badge">● Script pronto para revisão</span></div>
+              <article className="activation-panel">
+                <div className="activation-intro"><span className="activation-number">01</span><div><h2>Vincular equipamento</h2><p>Deixe o MikroTik com internet e cole um único comando no terminal.</p></div></div>
+                {!activation ? <button className="activation-create" onClick={createNewActivation} disabled={provisioningBusy}>{provisioningBusy ? "Gerando..." : "Gerar código de ativação"}</button> : <div className="activation-ready">
+                  <div className="activation-code"><small>CÓDIGO TEMPORÁRIO</small><strong>{activation.code}</strong><span>Expira em 30 minutos</span></div>
+                  <code>{activation.command}</code>
+                  <button onClick={copyActivationCommand}>Copiar comando</button>
+                </div>}
+              </article>
+              <article className="detected-card">
+                <div className="section-heading"><div><h2>Equipamentos detectados</h2><p>A lista é atualizada automaticamente a cada cinco segundos.</p></div><button className="text-button" onClick={refreshDevices}>Atualizar agora ↻</button></div>
+                {devices.length === 0 ? <div className="empty-device"><span>⌁</span><div><strong>Aguardando o primeiro MikroTik</strong><small>Gere o código acima e execute o comando no equipamento conectado à internet.</small></div></div> : <div className="device-list">{devices.map((device) => <button key={device.id} className={selectedDeviceId === device.id ? "selected" : ""} onClick={() => useDetectedInterfaces(device)}>
+                  <span className={`device-state ${device.status}`} />
+                  <div><strong>{device.model}</strong><small>{device.identity} · Serial {device.serial}</small></div>
+                  <span>RouterOS {device.routerosVersion}</span><span>{device.interfaces.length} interfaces</span>
+                  <b>{device.status === "installed" ? "Instalado" : device.status === "ready" ? "Instalando" : "Detectado"}</b>
+                </button>)}</div>}
+              </article>
               <div className="safety-banner"><strong>Antes de aplicar</strong><p>Conecte-se fisicamente à porta de gerenciamento e confirme os nomes das interfaces. O script pressupõe um equipamento resetado sem configuração padrão.</p></div>
               <div className="setup-layout">
                 <article className="setup-form-card">
@@ -259,6 +308,7 @@ export default function Home() {
                     <label>USUÁRIO<input value={routerConfig.adminUser} onChange={(e) => updateRouterConfig("adminUser", e.target.value)} /></label>
                     <label>SENHA INICIAL<input type="password" value={routerConfig.adminPassword} onChange={(e) => updateRouterConfig("adminPassword", e.target.value)} /></label>
                   </div>
+                  <button className="provision-button" onClick={sendConfiguration} disabled={!selectedDeviceId || provisioningBusy}>{provisioningBusy ? "Enviando..." : selectedDeviceId ? "Liberar instalação automática →" : "Aguardando equipamento detectado"}</button>
                 </article>
                 <aside className="script-card">
                   <div className="script-head"><div><span>ROUTEROS 7</span><strong>conecta-{mode === "self" ? "automatico" : "administrador"}.rsc</strong></div><span className="script-lines">{routerScript.split("\n").length} linhas</span></div>
@@ -266,7 +316,7 @@ export default function Home() {
                   <div className="script-actions"><button className="copy-button" onClick={copyScript}>Copiar script</button><button className="download-button" onClick={downloadScript}>Baixar .rsc ↓</button></div>
                 </aside>
               </div>
-              <article className="install-steps"><div><span>01</span><strong>Resetar sem configuração padrão</strong><small>Use System → Reset Configuration e marque “No Default Configuration”.</small></div><i>→</i><div><span>02</span><strong>Importar o arquivo</strong><small>Envie o .rsc em Files e execute /import file-name=arquivo.rsc.</small></div><i>→</i><div><span>03</span><strong>Enviar a pasta hotspot</strong><small>Substitua os arquivos visuais e teste os cinco tempos.</small></div></article>
+              <article className="install-steps"><div><span>01</span><strong>Internet e comando</strong><small>O técnico deixa a WAN online e cola o comando de vínculo.</small></div><i>→</i><div><span>02</span><strong>Servidor configura</strong><small>Escolha as portas e libere a instalação pelo painel.</small></div><i>→</i><div><span>03</span><strong>Confirmação automática</strong><small>O equipamento instala, remove o agente e confirma o resultado.</small></div></article>
             </section>}
           </div>
         </section>
