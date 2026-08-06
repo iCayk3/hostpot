@@ -74,6 +74,8 @@ export function configureDevice(id: string, config: RouterConfig, mode: Mode) {
   return true;
 }
 
+export function updateDeviceMode(id:string,mode:Mode){if(mode!=="self"&&mode!=="admin")return false;const device=db.prepare("SELECT activation_id FROM devices WHERE id=?").get(id) as {activation_id:string}|undefined;if(!device)return false;db.prepare("UPDATE activations SET mode=? WHERE id=?").run(mode,device.activation_id);return true}
+
 export function configurationForToken(token: string) {
   const activation = validateToken(token);
   if (!activation) return null;

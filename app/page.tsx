@@ -65,6 +65,7 @@ export default function Home() {
     const timer = window.setInterval(refreshDevices, 5000);
     return () => window.clearInterval(timer);
   }, [adminSection, selectedDeviceId]);
+  useEffect(()=>{if(adminAuthenticated)refreshDevices()},[adminAuthenticated]);
 
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {}).finally(()=>setAuthChecked(true));
@@ -205,6 +206,8 @@ export default function Home() {
     } finally { setProvisioningBusy(false); }
   }
 
+  async function saveAccessMode(){if(!selectedDeviceId)return notify("Selecione o MikroTik que receberá esta configuração.");setProvisioningBusy(true);try{const response=await fetch(`/api/provisioning/devices/${selectedDeviceId}/mode`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode})});if(!response.ok)throw new Error("Não foi possível alterar o modo.");notify("Modo salvo e atualização enviada ao MikroTik. Aguarde até 15 segundos.");await refreshDevices()}catch(error){notify(error instanceof Error?error.message:"Falha ao alterar o modo.")}finally{setProvisioningBusy(false)}}
+
   if(!authChecked)return <main className="ops-login"><p>Carregando acesso seguro...</p></main>;
   if(!adminAuthenticated)return <main className="ops-login"><form onSubmit={submitAdminLogin}><span className="brand-mark"><i/><i/><i/></span><span className="eyebrow">ACESSO AO SISTEMA</span><h1>Entrar no Conecta+</h1><p>Administradores acessam a configuração; usuários são direcionados aos MikroTiks permitidos.</p><label>USUÁRIO<input value={loginUsername} onChange={e=>setLoginUsername(e.target.value)} autoFocus autoComplete="username"/></label><label>SENHA<input type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} autoComplete="current-password"/></label><button disabled={loginBusy||!loginUsername||!loginPassword}>{loginBusy?"Entrando...":"Entrar →"}</button></form></main>;
   return (
@@ -293,7 +296,7 @@ export default function Home() {
                   <button className={mode === "self" ? "selected" : ""} onClick={() => setMode("self")}><span className="radio" /><div><strong>Visitante escolhe o tempo</strong><small>As opções de duração aparecem no portal de acesso.</small></div><b>Automático</b></button>
                   <button className={mode === "admin" ? "selected" : ""} onClick={() => setMode("admin")}><span className="radio" /><div><strong>Administrador libera o tempo</strong><small>Cada novo dispositivo aguarda sua aprovação.</small></div><b>Controle total</b></button>
                 </div>
-                <div className="mode-footer"><span>Alterações afetam apenas novas conexões.</span><button onClick={() => notify("Modo de acesso salvo com sucesso.")}>Salvar configuração</button></div>
+                <div className="mode-footer"><select aria-label="MikroTik que receberá o modo" value={selectedDeviceId} onChange={e=>setSelectedDeviceId(e.target.value)}><option value="">Selecione o MikroTik</option>{devices.map(device=><option key={device.id} value={device.id}>{device.identity} · {device.model}</option>)}</select><span>A alteração será enviada ao equipamento selecionado.</span><button disabled={provisioningBusy||!selectedDeviceId} onClick={saveAccessMode}>{provisioningBusy?"Enviando...":"Salvar configuração"}</button></div>
               </article>
 
               <article className="quick-release">

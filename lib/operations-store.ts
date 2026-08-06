@@ -43,6 +43,8 @@ export function operatorDevices(operatorId: string) {
     FROM operator_devices od JOIN devices d ON d.id=od.device_id JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id WHERE od.operator_id=? ORDER BY d.identity`).all(operatorId);
 }
 
+export function allOperationalDevices(){return db.prepare(`SELECT d.id,d.serial,d.model,d.identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at FROM devices d JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id ORDER BY d.identity`).all()}
+
 export function deviceDashboard(deviceId: string, operatorId?: string) {
   if (operatorId && !db.prepare("SELECT 1 ok FROM operator_devices WHERE operator_id=? AND device_id=?").get(operatorId,deviceId)) return null;
   const device = db.prepare(`SELECT d.id,d.serial,d.model,d.identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at FROM devices d JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id WHERE d.id=?`).get(deviceId);
@@ -85,4 +87,6 @@ export function setClientLabel(deviceId:string,mac:string,label:string){if(!mac)
 
 export function queueTerminate(deviceId:string,mac:string,operatorId:string){if(!mac)return null;const id=randomUUID();const safeMac=mac.replace(/[^0-9A-Fa-f:.-]/g,"");if(!safeMac)return null;const script=`/ip hotspot active remove [find mac-address=${safeMac}]\n/ip hotspot ip-binding remove [find mac-address=${safeMac}]\n:log warning \"Conecta+: acesso encerrado pelo operador ${operatorId.slice(0,8)} para ${safeMac}\"`;db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now());return id}
 
-export function nextCommand(tokenHash:string){const d=deviceIdByTokenHash(tokenHash);if(!d)return null;const c=db.prepare("SELECT * FROM router_commands WHERE device_id=? AND status='pending' ORDER BY created_at LIMIT 1").get(d.id) as any;if(!c)return ":nothing";db.prepare("UPDATE router_commands SET status='delivered',delivered_at=? WHERE id=?").run(now(),c.id);db.prepare("UPDATE access_releases SET status='delivered',executed_at=? WHERE id=?").run(now(),c.id);return String(c.script)}
+export function queuePortalRefresh(deviceId:string){const id=randomUUID(),script=`/tool fetch url="__CONNECTION_BASE__/api/provisioning/hotspot-login/__CONNECTION_TOKEN__" dst-path=hotspot/login.html\n/ip hotspot profile set [find name=conecta-hotspot] login-by=http-pap\n/ip hotspot cookie remove [find]\n:log info "Conecta+: modo do portal atualizado"`;db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now());return id}
+
+export function nextCommand(tokenHash:string,token?:string,base?:string){const d=deviceIdByTokenHash(tokenHash);if(!d)return null;const c=db.prepare("SELECT * FROM router_commands WHERE device_id=? AND status='pending' ORDER BY created_at LIMIT 1").get(d.id) as any;if(!c)return ":nothing";db.prepare("UPDATE router_commands SET status='delivered',delivered_at=? WHERE id=?").run(now(),c.id);db.prepare("UPDATE access_releases SET status='delivered',executed_at=? WHERE id=?").run(now(),c.id);return String(c.script).replaceAll("__CONNECTION_TOKEN__",token||"").replaceAll("__CONNECTION_BASE__",(base||"").replace(/\/$/,""))}

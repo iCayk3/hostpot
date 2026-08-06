@@ -1,6 +1,7 @@
 import { buildRouterScript, type Mode, type RouterConfig } from "@/lib/router-script";
-import { configurationForToken, configureDevice, confirmInstallation, createActivation, listDevices, registerDevice, validateToken } from "@/lib/provisioning-store";
+import { configurationForToken, configureDevice, confirmInstallation, createActivation, listDevices, registerDevice, updateDeviceMode, validateToken } from "@/lib/provisioning-store";
 import { isAdminRequest } from "@/lib/admin-auth";
+import { queuePortalRefresh } from "@/lib/operations-store";
 
 export const dynamic = "force-dynamic";
 
@@ -104,8 +105,11 @@ export async function POST(request: Request, context: RouteContext) {
   if (path[0] === "devices" && path[1] && path[2] === "configure") {
     if (!isAdminRequest(request)) return json({ error: "Não autorizado" }, 401);
     const body = await request.json() as { config: RouterConfig; mode: Mode };
-    return configureDevice(path[1], body.config, body.mode) ? json({ status: "ready" }) : json({ error: "Equipamento não encontrado" }, 404);
+    if(!configureDevice(path[1], body.config, body.mode))return json({ error: "Equipamento não encontrado" }, 404);
+    queuePortalRefresh(path[1]);
+    return json({ status: "ready" });
   }
+  if(path[0]==="devices"&&path[1]&&path[2]==="mode"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);const body=await request.json() as {mode:Mode};if(!updateDeviceMode(path[1],body.mode))return json({error:"Modo ou equipamento inválido"},400);queuePortalRefresh(path[1]);return json({status:"queued",mode:body.mode})}
   if (path[0] === "confirm" && path[1]) {
     return confirmInstallation(path[1]) ? json({ status: "installed" }) : json({ error: "Ativação inválida" }, 404);
   }
