@@ -9,12 +9,14 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-A aplicação estará disponível em `http://localhost:3000`. O estado futuro do provisionamento será persistido no volume `conecta_data`.
+A aplicação estará disponível em `http://localhost` (porta 80). O estado do provisionamento é persistido no volume `conecta_data`.
+
+O container usa a rede do host e a aplicação escuta diretamente na porta 80, sem tradução ou publicação de portas. A porta 80 do servidor precisa estar livre.
 
 Verifique a saúde do serviço:
 
 ```bash
-curl http://localhost:3000/api/health
+curl http://localhost/api/health
 ```
 
 ## Implantar como Stack no Portainer
@@ -22,7 +24,7 @@ curl http://localhost:3000/api/health
 1. Publique este diretório em um repositório GitHub.
 2. No Portainer, abra **Stacks → Add stack → Repository**.
 3. Informe a URL do repositório e use `docker-compose.yml` como caminho do Compose.
-4. Cadastre as variáveis `PUBLIC_BASE_URL`, `APP_PORT`, `ACTIVATION_TOKEN_SECRET`, `ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET`.
+4. Cadastre as variáveis `PUBLIC_BASE_URL`, `ACTIVATION_TOKEN_SECRET`, `ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET`.
 5. Faça o deploy da Stack.
 
 O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Proxy Manager, Traefik ou Cloudflare Tunnel. O MikroTik deverá acessar `PUBLIC_BASE_URL` por HTTPS com certificado válido.
@@ -31,7 +33,7 @@ O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Prox
 
 | Variável | Finalidade |
 | --- | --- |
-| `APP_PORT` | Porta publicada no host, padrão `3000` |
+| `ADMIN_USERNAME` | Usuário administrador, padrão `admin` |
 | `PUBLIC_BASE_URL` | Endereço HTTPS público da aplicação |
 | `ACTIVATION_TOKEN_SECRET` | Segredo usado futuramente nos códigos de ativação |
 | `ADMIN_PASSWORD` | Senha para abrir o painel administrativo |

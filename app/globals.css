@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root { --ink:#10231e; --muted:#6b7c76; --green:#168565; --lime:#b7e66b; --cream:#f3f4ee; --line:#dfe5de; --white:#fff; }
+.duration-dashboard{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.duration-dashboard>div{background:#f3f7f0;border:1px solid #e1e8df;border-radius:10px;padding:15px}.duration-dashboard small{display:block;font-size:7px;color:#7c8b85}.duration-dashboard strong{display:block;font:600 25px var(--font-display);margin-top:5px}@media(max-width:650px){.duration-dashboard{grid-template-columns:1fr 1fr}.duration-dashboard>div:last-child{grid-column:1/-1}}
 * { box-sizing:border-box; }
 body { margin:0; color:var(--ink); background:var(--cream); font-family:var(--font-body), sans-serif; }
 button,input,select { font:inherit; }

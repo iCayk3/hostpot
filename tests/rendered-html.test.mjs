@@ -14,13 +14,13 @@ async function request(pathname = "/", init = {}) {
   );
 }
 
-test("renderiza o portal Conecta+", async () => {
+test("renderiza o login administrativo Conecta+", async () => {
   const response = await request();
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Conecta\+/);
-  assert.match(html, /Portal do visitante/);
-  assert.match(html, /Administração/);
+  assert.match(html, /Carregando acesso seguro/);
+  assert.doesNotMatch(html, /Portal do visitante/);
 });
 
 test("expõe endpoint de saúde", async () => {
@@ -38,7 +38,7 @@ test("protege e cria ativações de provisionamento", async () => {
   const login = await request("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: process.env.ADMIN_PASSWORD || "admin" }),
+    body: JSON.stringify({ username: process.env.ADMIN_USERNAME || "admin", password: process.env.ADMIN_PASSWORD || "admin" }),
   });
   assert.equal(login.status, 200);
   const cookie = login.headers.get("set-cookie")?.split(";")[0];

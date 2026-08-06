@@ -1,4 +1,4 @@
-import { adminCookie, createAdminSession, isAdminRequest, validAdminPassword } from "@/lib/admin-auth";
+import { adminCookie, createAdminSession, isAdminRequest, validAdminCredentials } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +13,8 @@ export async function GET(request: Request, context: Context) {
 export async function POST(request: Request, context: Context) {
   const { action } = await context.params;
   if (action === "login") {
-    const body = await request.json() as { password?: string };
-    if (!body.password || !validAdminPassword(body.password)) return Response.json({ error: "Senha inválida" }, { status: 401 });
+    const body = await request.json() as { username?:string; password?: string };
+    if (!body.username||!body.password || !validAdminCredentials(body.username,body.password)) return Response.json({ error: "Credenciais inválidas" }, { status: 401 });
     const session = createAdminSession();
     return Response.json({ authenticated: true }, { headers: { "Set-Cookie": `${adminCookie}=${session.value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${session.maxAge}` } });
   }

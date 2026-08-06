@@ -14,6 +14,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS hotspot_sessions (device_id TEXT NOT NULL, s
 db.exec(`CREATE TABLE IF NOT EXISTS hotspot_hosts (device_id TEXT NOT NULL, host_key TEXT NOT NULL, address TEXT, mac TEXT, authorized INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY(device_id,host_key))`);
 db.exec(`CREATE TABLE IF NOT EXISTS access_releases (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, mac TEXT NOT NULL, minutes INTEGER NOT NULL, status TEXT NOT NULL, created_by TEXT, created_at TEXT NOT NULL, executed_at TEXT)`);
 db.exec(`CREATE TABLE IF NOT EXISTS router_commands (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, script TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, delivered_at TEXT)`);
+db.exec(`CREATE TABLE IF NOT EXISTS access_events (id TEXT PRIMARY KEY, device_id TEXT NOT NULL, mac TEXT, username TEXT, duration_minutes INTEGER, started_at TEXT NOT NULL, last_seen TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)`);
 db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_device ON hotspot_sessions(device_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_hosts_device ON hotspot_hosts(device_id)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_commands_pending ON router_commands(device_id,status)");
@@ -35,6 +36,7 @@ export function authenticateOperator(username: string, password: string) {
   const actual = Buffer.from(hashPassword(password, String(row.salt))), expected = Buffer.from(String(row.password_hash));
   return actual.length === expected.length && timingSafeEqual(actual, expected) ? { id:String(row.id), name:String(row.name), username:String(row.username) } : null;
 }
+export function getOperator(id:string){return db.prepare("SELECT id,name,username FROM operators WHERE id=? AND active=1").get(id)}
 
 export function listOperators() {
   return db.prepare(`SELECT o.id,o.name,o.username,o.active,o.created_at,COALESCE(group_concat(od.device_id),'') device_ids FROM operators o LEFT JOIN operator_devices od ON od.operator_id=o.id GROUP BY o.id ORDER BY o.name`).all().map((r:any)=>({...r,deviceIds:String(r.device_ids).split(',').filter(Boolean)}));
@@ -53,7 +55,8 @@ export function deviceDashboard(deviceId: string, operatorId?: string) {
   const sessions = db.prepare("SELECT username,address,mac,uptime,time_left,updated_at FROM hotspot_sessions WHERE device_id=? ORDER BY updated_at DESC").all(deviceId);
   const hosts = db.prepare("SELECT address,mac,authorized,updated_at FROM hotspot_hosts WHERE device_id=? ORDER BY updated_at DESC").all(deviceId);
   const releases = db.prepare("SELECT id,mac,minutes,status,created_at,executed_at FROM access_releases WHERE device_id=? ORDER BY created_at DESC LIMIT 50").all(deviceId);
-  return { device, sessions, hosts, releases };
+  const durationStats=db.prepare(`SELECT duration_minutes minutes,COUNT(*) total FROM access_events WHERE device_id=? AND started_at>=datetime('now','-1 day') GROUP BY duration_minutes ORDER BY duration_minutes`).all(deviceId);
+  return { device, sessions, hosts, releases,durationStats };
 }
 
 function deviceIdByTokenHash(tokenHash: string) {
@@ -69,7 +72,8 @@ export function saveTelemetry(tokenHash: string, values: Record<string,string>) 
   db.prepare("DELETE FROM hotspot_sessions WHERE device_id=?").run(device.id);
   db.prepare("DELETE FROM hotspot_hosts WHERE device_id=?").run(device.id);
   const insS=db.prepare("INSERT INTO hotspot_sessions VALUES (?,?,?,?,?,?,?,?)");
-  for(const item of (values.sessions||"").split(";").filter(Boolean)){const [user,address,mac,uptime,left]=item.split("|");insS.run(device.id,`${mac}-${user}`,user,address,mac,uptime,left,timestamp)}
+  for(const item of (values.sessions||"").split(";").filter(Boolean)){const [user,address,mac,uptime,left]=item.split("|");insS.run(device.id,`${mac}-${user}`,user,address,mac,uptime,left,timestamp);const current=db.prepare("SELECT id FROM access_events WHERE device_id=? AND mac=? AND username=? AND active=1 ORDER BY started_at DESC LIMIT 1").get(device.id,mac,user) as {id:string}|undefined;const minutes=Number((user||"").match(/portal-(\d+)m/)?.[1]||0)||null;if(current)db.prepare("UPDATE access_events SET active=1,last_seen=? WHERE id=?").run(timestamp,current.id);else db.prepare("INSERT INTO access_events VALUES (?,?,?,?,?,?,?,1)").run(randomUUID(),device.id,mac,user,minutes,timestamp,timestamp)}
+  db.prepare("UPDATE access_events SET active=0 WHERE device_id=? AND last_seen<>?").run(device.id,timestamp);
   const insH=db.prepare("INSERT INTO hotspot_hosts VALUES (?,?,?,?,?,?)");
   for(const item of (values.hosts||"").split(";").filter(Boolean)){const [address,mac,authorized]=item.split("|");insH.run(device.id,mac||address,address,mac,authorized==="true"?1:0,timestamp)}
   return true;

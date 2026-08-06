@@ -20,7 +20,7 @@ const durations = [
 ];
 
 export default function Home() {
-  const [view, setView] = useState<View>("portal");
+  const [view, setView] = useState<View>("admin");
   const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const [mode, setMode] = useState<Mode>("self");
   const [duration, setDuration] = useState(30);
@@ -35,6 +35,8 @@ export default function Home() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [loginPassword, setLoginPassword] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [loginUsername,setLoginUsername]=useState("admin");
+  const [authChecked,setAuthChecked]=useState(false);
   const [overviewData,setOverviewData]=useState<{totals:{routers:number;active:number;hosts:number;updated_at:string|null};sessions:Array<{identity:string;username:string;address:string;mac:string;uptime:string;time_left:string}>}>({totals:{routers:0,active:0,hosts:0,updated_at:null},sessions:[]});
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
@@ -65,7 +67,7 @@ export default function Home() {
   }, [adminSection, selectedDeviceId]);
 
   useEffect(() => {
-    fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {});
+    fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {}).finally(()=>setAuthChecked(true));
   }, []);
   useEffect(()=>{if(view!=="admin"||!adminAuthenticated)return;const load=()=>fetch("/api/operations/overview",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(p=>p&&setOverviewData(p));load();const t=window.setInterval(load,10000);return()=>window.clearInterval(t)},[view,adminAuthenticated]);
 
@@ -79,8 +81,8 @@ export default function Home() {
     if (!loginPassword) return;
     setLoginBusy(true);
     try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: loginPassword }) });
-      if (!response.ok) return notify("Senha administrativa inválida.");
+      const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username:loginUsername,password: loginPassword }) });
+      if (!response.ok){const operator=await fetch("/api/operations/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:loginUsername,password:loginPassword})});if(operator.ok){window.location.href="/gestao";return}return notify("Usuário ou senha inválidos.")}
       setAdminAuthenticated(true); setLoginOpen(false); setLoginPassword(""); setView("admin"); notify("Painel administrativo liberado.");
     } finally { setLoginBusy(false); }
   }
@@ -193,16 +195,18 @@ export default function Home() {
     } finally { setProvisioningBusy(false); }
   }
 
+  if(!authChecked)return <main className="ops-login"><p>Carregando acesso seguro...</p></main>;
+  if(!adminAuthenticated)return <main className="ops-login"><form onSubmit={submitAdminLogin}><span className="brand-mark"><i/><i/><i/></span><span className="eyebrow">ACESSO AO SISTEMA</span><h1>Entrar no Conecta+</h1><p>Administradores acessam a configuração; usuários são direcionados aos MikroTiks permitidos.</p><label>USUÁRIO<input value={loginUsername} onChange={e=>setLoginUsername(e.target.value)} autoFocus autoComplete="username"/></label><label>SENHA<input type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} autoComplete="current-password"/></label><button disabled={loginBusy||!loginUsername||!loginPassword}>{loginBusy?"Entrando...":"Entrar →"}</button></form></main>;
   return (
     <main className="app-shell">
       <header className="topbar">
-        <button className="brand" onClick={() => setView("portal")} aria-label="Ir para o portal">
+        <button className="brand" aria-label="Conecta+ administração">
           <span className="brand-mark"><i /><i /><i /></span>
           <span>Conecta<span>+</span></span>
         </button>
         <nav className="view-switch" aria-label="Navegação principal">
-          <button className={view === "portal" ? "active" : ""} onClick={() => setView("portal")}>Portal do visitante</button>
-          <button className={view === "admin" ? "active" : ""} onClick={openAdministration}>Administração</button>
+          <button className="active">Administração</button>
+          <button onClick={()=>window.location.href="/gestao"}>Painel operacional</button>
         </nav>
         <span className="network-pill"><i /> Rede online</span>
       </header>
@@ -260,12 +264,12 @@ export default function Home() {
         <section className="admin-view">
           <aside className="admin-sidebar">
             <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button><button onClick={()=>window.location.href="/usuarios"}>♙ <span>Usuários e permissões</span></button><button onClick={()=>window.location.href="/gestao"}>↗ <span>Painel operacional</span></button></div>
-            <div className="admin-user"><span>JS</span><div><strong>João Silva</strong><small>Administrador</small></div></div>
+            <div className="admin-user"><span>AD</span><div><strong>Administrador</strong><small>{loginUsername}</small></div></div>
           </aside>
           <div className="admin-content">
             {adminSection !== "setup" ? <>
             {adminSection === "overview" && <>
-            <div className="admin-title"><div><span className="eyebrow">PAINEL DE CONTROLE</span><h1>Boa tarde, João.</h1><p>Acompanhe e controle os acessos da sua rede.</p></div><button className="outline-button" onClick={() => notify("Dados atualizados.")}>↻ Atualizar dados</button></div>
+            <div className="admin-title"><div><span className="eyebrow">PAINEL DE CONTROLE</span><h1>Painel do administrador</h1><p>Acompanhe e controle os acessos da sua rede.</p></div><button className="outline-button" onClick={() => notify("Dados atualizados.")}>↻ Atualizar dados</button></div>
             <div className="stats-grid">
               <article><span className="stat-icon green">↗</span><small>Conectados agora</small><strong>{overviewData.totals.active}</strong><em>Telemetria real dos roteadores</em></article>
               <article><span className="stat-icon blue">◷</span><small>MikroTiks cadastrados</small><strong>{overviewData.totals.routers}</strong><em>{overviewData.totals.updated_at?`Atualizado ${new Date(overviewData.totals.updated_at).toLocaleTimeString("pt-BR")}`:"Sem telemetria"}</em></article>

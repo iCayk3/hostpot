@@ -1,6 +1,6 @@
 import { isAdminRequest, createOperatorSession, operatorCookie, operatorFromRequest } from "@/lib/admin-auth";
 import { hashToken } from "@/lib/provisioning-store";
-import { adminOverview, authenticateOperator, createOperator, deviceDashboard, listOperators, nextCommand, operatorDevices, queueRelease, saveTelemetry } from "@/lib/operations-store";
+import { adminOverview, authenticateOperator, createOperator, deviceDashboard, getOperator, listOperators, nextCommand, operatorDevices, queueRelease, saveTelemetry } from "@/lib/operations-store";
 export const dynamic="force-dynamic";
 const json=(body:unknown,status=200,headers:Record<string,string>={})=>Response.json(body,{status,headers:{"Cache-Control":"no-store",...headers}});
 const parse=(raw:string)=>Object.fromEntries(raw.split(/\r?\n/).map(line=>{const i=line.indexOf("=");return i>0?[line.slice(0,i),line.slice(i+1)]:[line,""]}));
@@ -8,7 +8,7 @@ type Ctx={params:Promise<{path:string[]}>};
 export async function GET(request:Request,ctx:Ctx){const{path}=await ctx.params;
  if(path[0]==="operators")return isAdminRequest(request)?json({operators:listOperators()}):json({error:"Não autorizado"},401);
  if(path[0]==="overview")return isAdminRequest(request)?json(adminOverview()):json({error:"Não autorizado"},401);
- const operatorId=operatorFromRequest(request);if(path[0]==="session")return json({authenticated:!!operatorId});
+ const operatorId=operatorFromRequest(request);if(path[0]==="session")return json({authenticated:!!operatorId,user:operatorId?getOperator(operatorId):null});
  if(path[0]==="devices")return operatorId?json({devices:operatorDevices(operatorId)}):json({error:"Não autorizado"},401);
  if(path[0]==="dashboard"&&path[1]){if(!operatorId)return json({error:"Não autorizado"},401);const data=deviceDashboard(path[1],operatorId);return data?json(data):json({error:"Sem acesso"},403)}
  if(path[0]==="commands"&&path[1])return new Response(nextCommand(hashToken(path[1]))||":error \"token invalido\"",{headers:{"Content-Type":"text/plain"}});

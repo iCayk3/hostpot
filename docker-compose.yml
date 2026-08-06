@@ -6,15 +6,15 @@ services:
     image: conecta-mais-hotspot:latest
     container_name: conecta-mais
     restart: unless-stopped
-    ports:
-      - "${APP_PORT:-3000}:3000"
+    network_mode: host
     environment:
       NODE_ENV: production
-      PORT: 3000
-      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:3000}"
+      PORT: 80
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost}"
       PROVISIONING_DATA_DIR: /data
       ACTIVATION_TOKEN_SECRET: "${ACTIVATION_TOKEN_SECRET}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_SESSION_SECRET: "${ADMIN_SESSION_SECRET}"
     volumes:
       - conecta_data:/data
@@ -22,8 +22,10 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s

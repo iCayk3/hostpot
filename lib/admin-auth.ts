@@ -27,7 +27,9 @@ export function isAdminRequest(request: Request) {
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
-export function validAdminPassword(password: string) {
+export function validAdminCredentials(username:string,password: string) {
+  const configuredUser=process.env.ADMIN_USERNAME||"admin";
+  if(username!==configuredUser)return false;
   const configured = process.env.ADMIN_PASSWORD || "admin";
   const expected = Buffer.from(configured);
   const received = Buffer.from(password);
