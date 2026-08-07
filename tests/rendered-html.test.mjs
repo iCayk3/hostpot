@@ -57,4 +57,19 @@ test("protege e cria ativações de provisionamento", async () => {
   const payload = await activation.json();
   assert.match(payload.code, /^[A-F0-9]{6}$/);
   assert.match(payload.command, /conecta-bootstrap\.rsc/);
+
+  const register = await request(`/api/provisioning/register/${payload.token}`, {
+    method: "POST", headers: { "content-type": "text/plain" },
+    body: "serial=TEST-SECURITY\nmodel=RB-Test\narchitecture=arm\nversion=7.20\nidentity=Teste\ninterfaces=ether1,ether2,ether3,ether4,ether5",
+  });
+  assert.equal(register.status, 200);
+  const devicesResponse = await request("/api/provisioning/devices", { headers: { cookie } });
+  const devicesPayload = await devicesResponse.json();
+  const device = devicesPayload.devices.find((item) => item.serial === "TEST-SECURITY");
+  assert.ok(device);
+  const configure = await request(`/api/provisioning/devices/${device.id}/configure`, {
+    method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ mode: "self", config: { identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5", guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254", managementAddress: "192.168.99.1/24", dnsName: "wifi.conecta.local", adminUser: "conecta-admin", adminPassword: "Troque-Esta-Senha-2026", rateLimit: "10M/10M" } }),
+  });
+  assert.equal(configure.status, 200, await configure.text());
 });
