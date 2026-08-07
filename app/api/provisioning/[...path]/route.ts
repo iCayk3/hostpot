@@ -88,7 +88,7 @@ ${permanentAgent(base,agentToken)}
 /system scheduler remove [find name=conecta-poll]
 `);
   }
-  if(path[0]==="hotspot-login"&&path[1]){const result=configurationForAgentToken(path[1]);if(!result||!result.config||!result.mode)return text("Ativação inválida",404);const paymentBase=process.env.MERCADO_PAGO_ACCESS_TOKEN&&result.deviceId?`${publicBase(request)}/comprar?device=${encodeURIComponent(result.deviceId)}&mac=$(mac)`:undefined;return new Response(hotspotLogin(result.mode,result.config.identity,paymentBase),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}})}
+  if(path[0]==="hotspot-login"&&path[1]){const result=configurationForAgentToken(path[1]);if(!result||!result.config||!result.mode)return text("Ativação inválida",404);const paymentBase=process.env.MERCADO_PAGO_ACCESS_TOKEN&&result.deviceId?`${publicBase(request)}/comprar?device=${encodeURIComponent(result.deviceId)}&mac=$(mac)&ip=$(ip)`:undefined;return new Response(hotspotLogin(result.mode,result.config.identity,paymentBase),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}})}
   return json({ error: "Rota não encontrada" }, 404);
 }
 

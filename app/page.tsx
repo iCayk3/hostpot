@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { buildRouterScript, type Mode, type RouterConfig } from "@/lib/router-script";
+import { useSystemDialog } from "@/app/components/system-dialog";
 
 type View = "portal" | "admin";
 type AdminSection = "overview" | "sessions" | "setup";
@@ -20,6 +21,7 @@ const durations = [
 ];
 
 export default function Home() {
+  const {open:openDialog,Dialog}=useSystemDialog();
   const [view, setView] = useState<View>("admin");
   const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const [mode, setMode] = useState<Mode>("self");
@@ -38,7 +40,7 @@ export default function Home() {
   const [loginUsername,setLoginUsername]=useState("admin");
   const [authChecked,setAuthChecked]=useState(false);
   const [overviewData,setOverviewData]=useState<{totals:{routers:number;active:number;hosts:number;updated_at:string|null};sessions:Array<{identity:string;username:string;address:string;mac:string;uptime:string;time_left:string}>}>({totals:{routers:0,active:0,hosts:0,updated_at:null},sessions:[]});
-  const [paymentDiagnostics,setPaymentDiagnostics]=useState<Array<{id:string;identity:string;mac:string;minutes:number;amount:number;status:string;mp_payment_id:string|null;last_error:string|null;created_at:string}>>([]);
+  const [paymentDiagnostics,setPaymentDiagnostics]=useState<Array<{id:string;identity:string;mac:string;minutes:number;amount:number;status:string;released:number;mp_payment_id:string|null;last_error:string|null;created_at:string}>>([]);
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
     guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254",
@@ -88,6 +90,8 @@ export default function Home() {
       setAdminAuthenticated(true); setLoginOpen(false); setLoginPassword(""); setView("admin"); notify("Painel administrativo liberado.");
     } finally { setLoginBusy(false); }
   }
+
+  async function receiveCash(payment:{id:string;identity:string;mac:string;minutes:number;amount:number}){const answer=await openDialog({title:"Confirmar recebimento em espécie",message:`Confirma o recebimento de ${Number(payment.amount).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})} e a liberação de ${payment.minutes} minutos para ${payment.mac}?`,confirmLabel:"Recebi e liberar"});if(!answer.confirmed)return;const response=await fetch(`/api/payments/cash/${payment.id}`,{method:"POST"});const payload=await response.json().catch(()=>({})) as {error?:string};if(!response.ok)return notify(payload.error||"Não foi possível liberar o acesso.");setPaymentDiagnostics(current=>current.map(item=>item.id===payment.id?{...item,status:"paid_cash",released:1}:item));notify("Pagamento em espécie confirmado e liberação enviada ao MikroTik.")}
 
   async function logoutAdmin() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -293,7 +297,7 @@ export default function Home() {
               <div className="section-heading"><div><h2>Homologação Mercado Pago</h2><p>Últimas tentativas Pix e resposta técnica recebida pelo backend.</p></div></div>
               <div className="session-table">
                 <div className="table-row table-head"><span>ROTEADOR / MAC</span><span>PLANO</span><span>STATUS</span><span>ERRO / ID MP</span><span /></div>
-                {paymentDiagnostics.length===0?<div className="empty">Nenhuma tentativa de pagamento registrada.</div>:paymentDiagnostics.map(payment=><div className="table-row" key={payment.id}><span><strong>{payment.identity}</strong><small>{payment.mac}</small></span><span>{payment.minutes} min · {Number(payment.amount).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span><span><b className={payment.status==="approved"?"status-active":""}>{payment.status}</b></span><span title={payment.last_error||payment.mp_payment_id||""}>{payment.last_error||payment.mp_payment_id||"Aguardando resposta"}</span><span>{new Date(payment.created_at).toLocaleTimeString("pt-BR")}</span></div>)}
+                {paymentDiagnostics.length===0?<div className="empty">Nenhuma tentativa de pagamento registrada.</div>:paymentDiagnostics.map(payment=><div className="table-row" key={payment.id}><span><strong>{payment.identity}</strong><small>{payment.mac}</small></span><span>{payment.minutes} min · {Number(payment.amount).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span><span><b className={payment.status==="approved"||payment.status==="paid_cash"?"status-active":""}>{payment.status}</b></span><span title={payment.last_error||payment.mp_payment_id||""}>{payment.last_error||payment.mp_payment_id||"Aguardando resposta"}</span><span>{payment.released?<b className="status-active">Liberado</b>:<button className="text-button" onClick={()=>receiveCash(payment)}>Recebi em espécie</button>}</span></div>)}
               </div>
             </article>
 
@@ -398,6 +402,7 @@ export default function Home() {
         </form>
       </div>}
       {toast && <div className="toast">✓ {toast}</div>}
+      <Dialog/>
     </main>
   );
 }

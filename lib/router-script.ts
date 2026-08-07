@@ -55,6 +55,7 @@ export function buildRouterScript(config: RouterConfig, mode: Mode) {
     ...(mode === "self" ? ["/ip hotspot cookie remove [find]"] : []),
     "/ip firewall nat remove [find where comment~\"^Conecta\"]",
     "/ip firewall filter remove [find where comment~\"^Conecta\"]",
+    "/ip firewall filter disable [find action=fasttrack-connection]",
     "/ip firewall nat add chain=srcnat out-interface-list=WAN action=masquerade comment=\"Conecta+ NAT\"",
     "/ip firewall filter add chain=input connection-state=established,related action=accept comment=\"Conecta+ estabelecidas\"",
     "/ip firewall filter add chain=input connection-state=invalid action=drop comment=\"Conecta+ invalidas\"",

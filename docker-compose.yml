@@ -23,6 +23,8 @@ services:
       ADMIN_SESSION_SECRET: "${ADMIN_SESSION_SECRET}"
       MERCADO_PAGO_ACCESS_TOKEN: "${MERCADO_PAGO_ACCESS_TOKEN:-}"
       MERCADO_PAGO_WEBHOOK_SECRET: "${MERCADO_PAGO_WEBHOOK_SECRET:-}"
+      PIX_BLOCKED_DOMAINS: "${PIX_BLOCKED_DOMAINS:-facebook.com,facebook.net,fbcdn.net,instagram.com,cdninstagram.com,whatsapp.com,whatsapp.net,tiktok.com,tiktokcdn.com,twitter.com,x.com,twimg.com,youtube.com,youtu.be,googlevideo.com,google.com,connectivitycheck.gstatic.com,captive.apple.com,msftconnecttest.com}"
+      PIX_TEMP_RATE_LIMIT: "${PIX_TEMP_RATE_LIMIT:-1M/1M}"
       PIX_PRICE_5: "${PIX_PRICE_5:-1.00}"
       PIX_PRICE_10: "${PIX_PRICE_10:-2.00}"
       PIX_PRICE_15: "${PIX_PRICE_15:-3.00}"

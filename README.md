@@ -44,6 +44,8 @@ O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Prox
 | `PROVISIONING_DATA_DIR` | Diretório interno persistente, configurado como `/data` |
 | `MERCADO_PAGO_ACCESS_TOKEN` | Access Token privado usado somente pelo backend para criar e consultar Pix |
 | `MERCADO_PAGO_WEBHOOK_SECRET` | Assinatura secreta configurada nos Webhooks do Mercado Pago |
+| `PIX_BLOCKED_DOMAINS` | Domínios bloqueados na janela de compatibilidade Pix de dois minutos; os demais sites HTTPS ficam disponíveis somente para o IP pagador |
+| `PIX_TEMP_RATE_LIMIT` | Limite de banda durante os dois minutos para pagamento, padrão `1M/1M` |
 | `PIX_PRICE_5` ... `PIX_PRICE_60` | Preços dos planos de 5, 10, 15, 30 e 60 minutos |
 
 ## Pagamento Pix
