@@ -6,21 +6,34 @@ services:
     image: conecta-mais-hotspot:latest
     container_name: conecta-mais
     restart: unless-stopped
+    init: true
     networks:
-      - conecta_external
+      conecta_network:
+        ipv4_address: "${DOCKER_STATIC_IP:-172.30.250.10}"
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     environment:
       NODE_ENV: production
       PORT: 80
-      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL}"
       PROVISIONING_DATA_DIR: /data
       ACTIVATION_TOKEN_SECRET: "${ACTIVATION_TOKEN_SECRET}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD}"
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_SESSION_SECRET: "${ADMIN_SESSION_SECRET}"
+      MERCADO_PAGO_ACCESS_TOKEN: "${MERCADO_PAGO_ACCESS_TOKEN:-}"
+      MERCADO_PAGO_WEBHOOK_SECRET: "${MERCADO_PAGO_WEBHOOK_SECRET:-}"
+      PIX_PRICE_5: "${PIX_PRICE_5:-1.00}"
+      PIX_PRICE_10: "${PIX_PRICE_10:-2.00}"
+      PIX_PRICE_15: "${PIX_PRICE_15:-3.00}"
+      PIX_PRICE_30: "${PIX_PRICE_30:-5.00}"
+      PIX_PRICE_60: "${PIX_PRICE_60:-8.00}"
     volumes:
       - conecta_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    pids_limit: 200
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -36,6 +49,9 @@ volumes:
   conecta_data:
 
 networks:
-  conecta_external:
-    external: true
-    name: "${DOCKER_NETWORK:-local-rede-external}"
+  conecta_network:
+    name: "${DOCKER_NETWORK_NAME:-conecta-mais-network}"
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "${DOCKER_NETWORK_SUBNET:-172.30.250.0/24}"

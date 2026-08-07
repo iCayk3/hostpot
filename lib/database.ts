@@ -1,6 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { validateProductionEnvironment } from "./security";
+
+validateProductionEnvironment();
 
 const dataDir = process.env.PROVISIONING_DATA_DIR || join(process.cwd(), "data");
 mkdirSync(dataDir, { recursive: true });

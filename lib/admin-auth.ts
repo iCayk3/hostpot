@@ -1,10 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { secureCookie } from "./security";
 
 const COOKIE_NAME = "conecta_admin_v2";
 const maxAge = 8 * 60 * 60;
 
 function secret() {
-  return process.env.ADMIN_SESSION_SECRET || process.env.ACTIVATION_TOKEN_SECRET || "development-only-change-me";
+  const value=process.env.ADMIN_SESSION_SECRET||process.env.ACTIVATION_TOKEN_SECRET;
+  if(process.env.NODE_ENV==="production"&&!value)throw new Error("ADMIN_SESSION_SECRET obrigatório");
+  return value||"development-only-change-me";
 }
 
 function sign(value: string) {
@@ -30,13 +33,14 @@ export function isAdminRequest(request: Request) {
 export function validAdminCredentials(username:string,password: string) {
   const configuredUser=process.env.ADMIN_USERNAME||"admin";
   if(username!==configuredUser)return false;
-  const configured = process.env.ADMIN_PASSWORD || "admin";
+  const configured = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV==="production"?"":"admin");
   const expected = Buffer.from(configured);
   const received = Buffer.from(password);
   return expected.length === received.length && timingSafeEqual(expected, received);
 }
 
 export const adminCookie = COOKIE_NAME;
+export const cookieSecurity=secureCookie;
 
 const OPERATOR_COOKIE = "conecta_operator";
 export function createOperatorSession(userId:string){const expires=Math.floor(Date.now()/1000)+maxAge;const payload=`${userId}:${expires}`;return{value:`${Buffer.from(payload).toString("base64url")}.${sign(payload)}`,maxAge}}

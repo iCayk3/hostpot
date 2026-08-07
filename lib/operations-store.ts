@@ -1,5 +1,7 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { database as db } from "./database";
+import { hashAgentToken } from "./provisioning-store";
+import { cleanText, validMac } from "./security";
 
 db.exec(`CREATE TABLE IF NOT EXISTS operators (id TEXT PRIMARY KEY, name TEXT NOT NULL, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, salt TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)`);
 db.exec(`CREATE TABLE IF NOT EXISTS operator_devices (operator_id TEXT NOT NULL, device_id TEXT NOT NULL, PRIMARY KEY(operator_id,device_id))`);
@@ -18,10 +20,12 @@ const now = () => new Date().toISOString();
 const hashPassword = (password: string, salt: string) => scryptSync(password, salt, 32).toString("hex");
 
 export function createOperator(name: string, username: string, password: string, deviceIds: string[]) {
+  name=cleanText(name,80);username=cleanText(username,40).toLowerCase();
+  if(name.length<2||!/^[a-z0-9._-]{3,40}$/.test(username)||password.length<12||password.length>128)throw new Error("Dados inválidos");
   const id = randomUUID(), salt = randomBytes(16).toString("hex");
   db.prepare("INSERT INTO operators VALUES (?,?,?,?,?,1,?)").run(id, name, username.toLowerCase(), hashPassword(password, salt), salt, now());
   const assign = db.prepare("INSERT OR IGNORE INTO operator_devices VALUES (?,?)");
-  for (const deviceId of deviceIds) assign.run(id, deviceId);
+  for (const deviceId of [...new Set(deviceIds.slice(0,100))]) if(db.prepare("SELECT 1 FROM devices WHERE id=?").get(deviceId))assign.run(id,deviceId);
   return id;
 }
 
@@ -58,8 +62,10 @@ export function deviceDashboard(deviceId: string, operatorId?: string) {
 }
 
 function deviceIdByTokenHash(tokenHash: string) {
-  return db.prepare(`SELECT d.id FROM devices d JOIN activations a ON a.id=d.activation_id WHERE a.token_hash=?`).get(tokenHash) as {id:string}|undefined;
+  return db.prepare(`SELECT d.id FROM devices d JOIN activations a ON a.id=d.activation_id WHERE d.agent_token_hash=? AND a.status='installed'`).get(tokenHash) as {id:string}|undefined;
 }
+
+export const agentTokenHash = (token: string) => hashAgentToken(token);
 
 export function saveTelemetry(tokenHash: string, values: Record<string,string>) {
   const device = deviceIdByTokenHash(tokenHash); if (!device) return false;
@@ -78,16 +84,16 @@ export function saveTelemetry(tokenHash: string, values: Record<string,string>) 
 }
 
 export function queueRelease(deviceId:string,mac:string,minutes:number,operatorId:string){
-  if(![5,10,15,30,60].includes(minutes)) return null;
-  const id=randomUUID(), tag=`conecta-${id.slice(0,8)}`, script=`/ip hotspot ip-binding remove [find mac-address=${mac}]\n/ip hotspot ip-binding add mac-address=${mac} type=bypassed comment=\"${tag}\"\n/system scheduler add name=${tag} interval=${minutes}m start-time=startup on-event=\"/ip hotspot ip-binding remove [find comment=${tag}]; /system scheduler set [find name=${tag}] disabled=yes\"`;
-  db.prepare("INSERT INTO access_releases VALUES (?,?,?,?,?,?,?,NULL)").run(id,deviceId,mac,minutes,"queued",operatorId,now());
+  const safeMac=validMac(mac);if(!safeMac||![5,10,15,30,60].includes(minutes)) return null;
+  const id=randomUUID(), tag=`conecta-${id.slice(0,8)}`, script=`/ip hotspot ip-binding remove [find mac-address=${safeMac}]\n/ip hotspot ip-binding add mac-address=${safeMac} type=bypassed comment=\"${tag}\"\n/system scheduler add name=${tag} interval=${minutes}m start-time=startup on-event=\"/ip hotspot ip-binding remove [find comment=${tag}]; /system scheduler set [find name=${tag}] disabled=yes\"`;
+  db.prepare("INSERT INTO access_releases VALUES (?,?,?,?,?,?,?,NULL)").run(id,deviceId,safeMac,minutes,"queued",cleanText(operatorId,64),now());
   db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now()); return id;
 }
 
-export function setClientLabel(deviceId:string,mac:string,label:string){if(!mac)return false;db.prepare(`INSERT INTO client_devices(device_id,mac,label,detected_name,updated_at) VALUES (?,?,?,NULL,?) ON CONFLICT(device_id,mac) DO UPDATE SET label=excluded.label,updated_at=excluded.updated_at`).run(deviceId,mac,label.trim().slice(0,80),now());return true}
+export function setClientLabel(deviceId:string,mac:string,label:string){const safeMac=validMac(mac);if(!safeMac)return false;db.prepare(`INSERT INTO client_devices(device_id,mac,label,detected_name,updated_at) VALUES (?,?,?,NULL,?) ON CONFLICT(device_id,mac) DO UPDATE SET label=excluded.label,updated_at=excluded.updated_at`).run(deviceId,safeMac,cleanText(label,80),now());return true}
 
-export function queueTerminate(deviceId:string,mac:string,operatorId:string){if(!mac)return null;const id=randomUUID();const safeMac=mac.replace(/[^0-9A-Fa-f:.-]/g,"");if(!safeMac)return null;const script=`/ip hotspot active remove [find mac-address=${safeMac}]\n/ip hotspot ip-binding remove [find mac-address=${safeMac}]\n:log warning \"Conecta+: acesso encerrado pelo operador ${operatorId.slice(0,8)} para ${safeMac}\"`;db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now());return id}
+export function queueTerminate(deviceId:string,mac:string,operatorId:string){const safeMac=validMac(mac);if(!safeMac)return null;const id=randomUUID(),actor=cleanText(operatorId,16);const script=`/ip hotspot active remove [find mac-address=${safeMac}]\n/ip hotspot ip-binding remove [find mac-address=${safeMac}]\n:log warning \"Conecta+: acesso encerrado por ${actor} para ${safeMac}\"`;db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now());return id}
 
-export function queuePortalRefresh(deviceId:string){const id=randomUUID(),script=`/tool fetch url="__CONNECTION_BASE__/api/provisioning/hotspot-login/__CONNECTION_TOKEN__" dst-path=hotspot/login.html\n/ip hotspot profile set [find name=conecta-hotspot] login-by=http-pap\n/ip hotspot cookie remove [find]\n/ip hotspot active remove [find]\n/ip hotspot ip-binding remove [find where comment~"^conecta-"]\n:log warning "Conecta+: modo atualizado; sessoes anteriores encerradas"`;db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now());return id}
+export function queuePortalRefresh(deviceId:string){const id=randomUUID(),script=`/tool fetch url="__CONNECTION_BASE__/api/provisioning/hotspot-login/__CONNECTION_TOKEN__" dst-path=hotspot/login.html\n/ip hotspot walled-garden remove [find comment="Conecta+ pagamentos"]\n/ip hotspot walled-garden add dst-host=__CONNECTION_HOST__ action=allow comment="Conecta+ pagamentos"\n/ip hotspot profile set [find name=conecta-hotspot] login-by=http-pap\n/ip hotspot cookie remove [find]\n/ip hotspot active remove [find]\n/ip hotspot ip-binding remove [find where comment~"^conecta-"]\n:log warning "Conecta+: modo atualizado; sessoes anteriores encerradas"`;db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now());return id}
 
-export function nextCommand(tokenHash:string,token?:string,base?:string){const d=deviceIdByTokenHash(tokenHash);if(!d)return null;const c=db.prepare("SELECT * FROM router_commands WHERE device_id=? AND status='pending' ORDER BY created_at LIMIT 1").get(d.id) as any;if(!c)return ":nothing";db.prepare("UPDATE router_commands SET status='delivered',delivered_at=? WHERE id=?").run(now(),c.id);db.prepare("UPDATE access_releases SET status='delivered',executed_at=? WHERE id=?").run(now(),c.id);return String(c.script).replaceAll("__CONNECTION_TOKEN__",token||"").replaceAll("__CONNECTION_BASE__",(base||"").replace(/\/$/,""))}
+export function nextCommand(tokenHash:string,token?:string,base?:string){const d=deviceIdByTokenHash(tokenHash);if(!d)return null;const c=db.prepare("SELECT * FROM router_commands WHERE device_id=? AND status='pending' ORDER BY created_at LIMIT 1").get(d.id) as any;if(!c)return ":nothing";db.prepare("UPDATE router_commands SET status='delivered',delivered_at=? WHERE id=?").run(now(),c.id);db.prepare("UPDATE access_releases SET status='delivered',executed_at=? WHERE id=?").run(now(),c.id);let host="";try{host=new URL(base||"").hostname}catch{}return String(c.script).replaceAll("__CONNECTION_TOKEN__",token||"").replaceAll("__CONNECTION_BASE__",(base||"").replace(/\/$/,"")).replaceAll("__CONNECTION_HOST__",host)}

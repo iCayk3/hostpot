@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.PUBLIC_BASE_URL = "https://localhost.example";
+process.env.ACTIVATION_TOKEN_SECRET = "test-activation-secret-at-least-32-chars";
+process.env.ADMIN_SESSION_SECRET = "test-session-secret-at-least-32-chars";
+process.env.ADMIN_USERNAME = "admin";
+process.env.ADMIN_PASSWORD = "test-admin-password-secure";
+
 const workerUrl = new URL("../dist/server/index.js", import.meta.url);
 
 async function request(pathname = "/", init = {}) {
@@ -21,6 +27,8 @@ test("renderiza o login administrativo Conecta+", async () => {
   assert.match(html, /Conecta\+/);
   assert.match(html, /Carregando acesso seguro/);
   assert.doesNotMatch(html, /Portal do visitante/);
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("x-frame-options"), "DENY");
 });
 
 test("expõe endpoint de saúde", async () => {

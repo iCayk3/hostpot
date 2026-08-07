@@ -35,6 +35,10 @@ yarn-error.log*
 # dados locais de provisionamento
 /data/
 /.test-data*/
+/.qa-data/
+/.release-data/
+/.test-buttons/
+/.test-release/
 /.npm-cache/
 
 # vercel

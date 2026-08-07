@@ -22,10 +22,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS devices (
 )`);
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_serial ON devices(serial)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_activations_token_hash ON activations(token_hash)");
+const deviceColumns = db.prepare("PRAGMA table_info(devices)").all() as Array<{ name: string }>;
+if (!deviceColumns.some((column) => column.name === "agent_token_hash")) db.exec("ALTER TABLE devices ADD COLUMN agent_token_hash TEXT");
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_agent_token_hash ON devices(agent_token_hash) WHERE agent_token_hash IS NOT NULL");
 db.exec("PRAGMA optimize");
 
-export const hashToken = (token: string) => createHmac("sha256", process.env.ACTIVATION_TOKEN_SECRET || "development-activation-secret").update(token).digest("hex");
+export const hashToken = (token: string) => {const secret=process.env.ACTIVATION_TOKEN_SECRET||(process.env.NODE_ENV==="production"?"":"development-activation-secret");if(!secret)throw new Error("ACTIVATION_TOKEN_SECRET obrigatório");return createHmac("sha256",secret).update(token).digest("hex")};
 const now = () => new Date().toISOString();
+export const hashAgentToken = (token: string) => createHmac("sha256", process.env.ACTIVATION_TOKEN_SECRET || "development-activation-secret").update(`agent:${token}`).digest("hex");
 
 export function createActivation() {
   const id = randomUUID();
@@ -44,7 +48,7 @@ function activationByToken(token: string) {
 
 export function validateToken(token: string) {
   const activation = activationByToken(token);
-  if (!activation || (activation.status === "awaiting" && new Date(String(activation.expires_at)).getTime() < Date.now())) return null;
+  if (!activation || activation.status === "installed" || new Date(String(activation.expires_at)).getTime() < Date.now()) return null;
   return activation;
 }
 
@@ -59,7 +63,7 @@ export function registerDevice(token: string, values: Record<string, string>) {
     db.prepare("UPDATE devices SET activation_id=?,serial=?,model=?,architecture=?,routeros_version=?,identity=?,interfaces_json=?,status=?,last_seen=? WHERE id=?")
       .run(activation.id, serial, values.model || "unknown", values.architecture || "unknown", values.version || "unknown", values.identity || "MikroTik", JSON.stringify(interfaces), "detected", now(), id);
   } else {
-    db.prepare("INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    db.prepare("INSERT INTO devices (id,activation_id,serial,model,architecture,routeros_version,identity,interfaces_json,status,last_seen,installed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
       .run(id, activation.id, values.serial || "unknown", values.model || "unknown", values.architecture || "unknown", values.version || "unknown", values.identity || "MikroTik", JSON.stringify(interfaces), "detected", now(), null);
   }
   db.prepare("UPDATE activations SET status='detected' WHERE id=?").run(activation.id);
@@ -67,6 +71,9 @@ export function registerDevice(token: string, values: Record<string, string>) {
 }
 
 export function configureDevice(id: string, config: RouterConfig, mode: Mode) {
+  const interfaceName=/^[A-Za-z0-9_.:+-]{1,63}$/;
+  const ipv4="(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}";
+  if(!config||!Object.values(config).every(value=>typeof value==="string"&&value.length<=128)||!interfaceName.test(config.wan)||!interfaceName.test(config.management)||!config.guests.split(",").every(value=>interfaceName.test(value.trim()))||!new RegExp(`^${ipv4}/(?:[8-9]|[12]\\d|3[0-2])$`).test(config.guestSubnet)||!new RegExp(`^${ipv4}$`).test(config.guestGateway)||!new RegExp(`^${ipv4}-${ipv4}$`).test(config.guestPool)||!new RegExp(`^${ipv4}/(?:[8-9]|[12]\\d|3[0-2])$`).test(config.managementAddress)||!/^[A-Za-z0-9.-]{1,253}$/.test(config.dnsName)||!/^[A-Za-z0-9_.-]{3,32}$/.test(config.adminUser)||config.adminPassword.length<12||!/^[0-9]+[kKmMgG]?\/[0-9]+[kKmMgG]?$/.test(config.rateLimit))return false;
   const device = db.prepare("SELECT activation_id FROM devices WHERE id=?").get(id) as { activation_id: string } | undefined;
   if (!device) return false;
   db.prepare("UPDATE activations SET config_json=?,mode=?,status='ready' WHERE id=?").run(JSON.stringify(config), mode, device.activation_id);
@@ -79,8 +86,10 @@ export function updateDeviceMode(id:string,mode:Mode){if(mode!=="self"&&mode!=="
 export function configurationForToken(token: string) {
   const activation = validateToken(token);
   if (!activation) return null;
+  const device=db.prepare("SELECT id FROM devices WHERE activation_id=?").get(activation.id) as {id:string}|undefined;
   return {
     activation,
+    deviceId:device?.id||null,
     config: activation.config_json ? JSON.parse(String(activation.config_json)) as RouterConfig : null,
     mode: activation.mode as Mode | null,
   };
@@ -93,6 +102,19 @@ export function confirmInstallation(token: string) {
   db.prepare("UPDATE activations SET status='installed' WHERE id=?").run(activation.id);
   db.prepare("UPDATE devices SET status='installed',installed_at=?,last_seen=? WHERE activation_id=?").run(installedAt, installedAt, activation.id);
   return true;
+}
+
+export function activateAgentToken(token: string) {
+  const activation = validateToken(token);
+  if (!activation) return null;
+  const agentToken = randomBytes(32).toString("base64url");
+  db.prepare("UPDATE devices SET agent_token_hash=? WHERE activation_id=?").run(hashAgentToken(agentToken), activation.id);
+  return agentToken;
+}
+
+export function configurationForAgentToken(token: string) {
+  const row = db.prepare(`SELECT d.id,a.mode,a.config_json FROM devices d JOIN activations a ON a.id=d.activation_id WHERE d.agent_token_hash=? AND a.status IN ('ready','installed')`).get(hashAgentToken(token)) as { id: string; mode: Mode | null; config_json: string | null } | undefined;
+  return row ? { deviceId: row.id, mode: row.mode, config: row.config_json ? JSON.parse(row.config_json) as RouterConfig : null } : null;
 }
 
 export function listDevices(): Device[] {

@@ -5,10 +5,12 @@ RUN npm ci --ignore-scripts --no-audit --no-fund
 
 FROM node:24-bookworm-slim AS builder
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    SKIP_ENV_VALIDATION=1
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev
 
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
