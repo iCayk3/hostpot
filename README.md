@@ -11,7 +11,7 @@ docker compose up -d --build
 
 A aplicação estará disponível em `http://localhost` (porta 80). O estado do provisionamento é persistido no volume `conecta_data`.
 
-O container escuta diretamente na porta 80, sem tradução ou publicação de portas. A Stack cria automaticamente uma rede bridge própria. Informe a rede e a máscara em `DOCKER_NETWORK_SUBNET` e o IP fixo do container em `DOCKER_STATIC_IP`. Por exemplo: sub-rede `10.12.0.0/24` e IP `10.12.0.205`. Se não informar, serão usados `conecta-mais-network`, `172.30.250.0/24` e `172.30.250.10`.
+O container escuta diretamente na porta 80, sem tradução ou publicação de portas. A Stack entra em uma rede Docker externa já criada: informe seu nome em `DOCKER_NETWORK_NAME` e um IP livre pertencente a ela em `DOCKER_STATIC_IP`. A Stack não cria nem modifica a sub-rede existente.
 O processo permanece no usuário restrito `node`. O container permite portas não privilegiadas a partir de 0, possibilitando escutar na porta 80 sem executar a aplicação como root.
 
 Verifique a saúde do serviço:
@@ -25,7 +25,7 @@ curl http://localhost/api/health
 1. Publique este diretório em um repositório GitHub.
 2. No Portainer, abra **Stacks → Add stack → Repository**.
 3. Informe a URL do repositório e use `docker-compose.yml` como caminho do Compose.
-4. Cadastre `PUBLIC_BASE_URL`, `ACTIVATION_TOKEN_SECRET`, `ADMIN_PASSWORD` e `ADMIN_SESSION_SECRET`. `DOCKER_NETWORK_NAME`, `DOCKER_NETWORK_SUBNET` e `DOCKER_STATIC_IP` possuem valores padrão e podem ser personalizados.
+4. Cadastre `PUBLIC_BASE_URL`, `ACTIVATION_TOKEN_SECRET`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `DOCKER_NETWORK_NAME` e `DOCKER_STATIC_IP`.
 5. Faça o deploy da Stack.
 
 O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Proxy Manager, Traefik ou Cloudflare Tunnel. O MikroTik deverá acessar `PUBLIC_BASE_URL` por HTTPS com certificado válido.
@@ -35,9 +35,8 @@ O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Prox
 | Variável | Finalidade |
 | --- | --- |
 | `ADMIN_USERNAME` | Usuário administrador, padrão `admin` |
-| `DOCKER_NETWORK_NAME` | Nome da rede criada pela Stack, padrão `conecta-mais-network` |
-| `DOCKER_NETWORK_SUBNET` | Rede e máscara em CIDR, padrão `172.30.250.0/24` |
-| `DOCKER_STATIC_IP` | IP fixo reservado ao container, padrão `172.30.250.10` |
+| `DOCKER_NETWORK_NAME` | Nome exato da rede Docker externa que já existe no Portainer |
+| `DOCKER_STATIC_IP` | IP fixo livre pertencente à sub-rede configurada nessa rede |
 | `PUBLIC_BASE_URL` | Endereço HTTPS público da aplicação |
 | `ACTIVATION_TOKEN_SECRET` | Segredo usado futuramente nos códigos de ativação |
 | `ADMIN_PASSWORD` | Senha para abrir o painel administrativo |

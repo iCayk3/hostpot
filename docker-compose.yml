@@ -9,7 +9,7 @@ services:
     init: true
     networks:
       conecta_network:
-        ipv4_address: "${DOCKER_STATIC_IP:-172.30.250.10}"
+        ipv4_address: "${DOCKER_STATIC_IP}"
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     environment:
@@ -50,8 +50,5 @@ volumes:
 
 networks:
   conecta_network:
-    name: "${DOCKER_NETWORK_NAME:-conecta-mais-network}"
-    driver: bridge
-    ipam:
-      config:
-        - subnet: "${DOCKER_NETWORK_SUBNET:-172.30.250.0/24}"
+    external: true
+    name: "${DOCKER_NETWORK_NAME}"
