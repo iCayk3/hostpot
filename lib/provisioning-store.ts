@@ -23,7 +23,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS devices (
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_serial ON devices(serial)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_activations_token_hash ON activations(token_hash)");
 const deviceColumns = db.prepare("PRAGMA table_info(devices)").all() as Array<{ name: string }>;
-if (!deviceColumns.some((column) => column.name === "agent_token_hash")) db.exec("ALTER TABLE devices ADD COLUMN agent_token_hash TEXT");
+if (!deviceColumns.some((column) => column.name === "agent_token_hash")) {
+  try { db.exec("ALTER TABLE devices ADD COLUMN agent_token_hash TEXT"); }
+  catch (error) { if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error; }
+}
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_agent_token_hash ON devices(agent_token_hash) WHERE agent_token_hash IS NOT NULL");
 db.exec("PRAGMA optimize");
 
@@ -72,13 +75,26 @@ export function registerDevice(token: string, values: Record<string, string>) {
 
 export function configureDevice(id: string, config: RouterConfig, mode: Mode) {
   const interfaceName=/^[A-Za-z0-9_.:+-]{1,63}$/;
-  const ipv4="(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}";
-  if(!config||!Object.values(config).every(value=>typeof value==="string"&&value.length<=128)||!interfaceName.test(config.wan)||!interfaceName.test(config.management)||!config.guests.split(",").every(value=>interfaceName.test(value.trim()))||!new RegExp(`^${ipv4}/(?:[8-9]|[12]\\d|3[0-2])$`).test(config.guestSubnet)||!new RegExp(`^${ipv4}$`).test(config.guestGateway)||!new RegExp(`^${ipv4}-${ipv4}$`).test(config.guestPool)||!new RegExp(`^${ipv4}/(?:[8-9]|[12]\\d|3[0-2])$`).test(config.managementAddress)||!/^[A-Za-z0-9.-]{1,253}$/.test(config.dnsName)||!/^[A-Za-z0-9_.-]{3,32}$/.test(config.adminUser)||config.adminPassword.length<12||!/^[0-9]+[kKmMgG]?\/[0-9]+[kKmMgG]?$/.test(config.rateLimit))return false;
+  const ip=(value:string)=>{const parts=value.split(".");return parts.length===4&&parts.every(part=>/^\d{1,3}$/.test(part)&&Number(part)<=255)};
+  const cidr=(value:string)=>{const [address,prefix,...extra]=value.split("/");return extra.length===0&&ip(address)&&/^\d{1,2}$/.test(prefix)&&Number(prefix)>=8&&Number(prefix)<=32};
+  let error="";
+  if(!config||!Object.values(config).every(value=>typeof value==="string"&&value.length<=128))error="Configuração incompleta ou campo maior que 128 caracteres.";
+  else if(mode!=="self"&&mode!=="admin")error="Modo de operação inválido.";
+  else if(!interfaceName.test(config.wan)||!interfaceName.test(config.management)||!config.guests.split(",").every(value=>interfaceName.test(value.trim())))error="Nome de interface inválido. Use somente letras, números, ponto, hífen ou sublinhado.";
+  else if(!cidr(config.guestSubnet))error="Rede HotSpot inválida. Use o formato 10.50.0.0/24.";
+  else if(!ip(config.guestGateway))error="Gateway HotSpot inválido.";
+  else {const pool=config.guestPool.split("-");if(pool.length!==2||!pool.every(ip))error="Faixa DHCP inválida. Use o formato 10.50.0.10-10.50.0.254.";}
+  if(!error&&!cidr(config.managementAddress))error="IP de gerenciamento inválido. Use endereço e máscara, como 192.168.99.1/24.";
+  if(!error&&!/^[A-Za-z0-9.-]{1,253}$/.test(config.dnsName))error="Domínio do portal inválido.";
+  if(!error&&!/^[A-Za-z0-9_.-]{3,32}$/.test(config.adminUser))error="Usuário RouterOS inválido.";
+  if(!error&&config.adminPassword.length<12)error="A senha inicial do RouterOS precisa ter pelo menos 12 caracteres.";
+  if(!error&&!/^[0-9]+[kKmMgG]?\/[0-9]+[kKmMgG]?$/.test(config.rateLimit))error="Velocidade inválida. Use o formato 10M/10M.";
+  if(error)return {ok:false as const,status:400,error};
   const device = db.prepare("SELECT activation_id FROM devices WHERE id=?").get(id) as { activation_id: string } | undefined;
-  if (!device) return false;
+  if (!device) return {ok:false as const,status:404,error:"Equipamento não encontrado. Atualize a lista e selecione-o novamente."};
   db.prepare("UPDATE activations SET config_json=?,mode=?,status='ready' WHERE id=?").run(JSON.stringify(config), mode, device.activation_id);
   db.prepare("UPDATE devices SET status='ready' WHERE id=?").run(id);
-  return true;
+  return {ok:true as const};
 }
 
 export function updateDeviceMode(id:string,mode:Mode){if(mode!=="self"&&mode!=="admin")return false;const device=db.prepare("SELECT activation_id FROM devices WHERE id=?").get(id) as {activation_id:string}|undefined;if(!device)return false;db.prepare("UPDATE activations SET mode=? WHERE id=?").run(mode,device.activation_id);return true}

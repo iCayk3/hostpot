@@ -111,7 +111,8 @@ async function post(request: Request, context: RouteContext) {
     assertTrustedOrigin(request);
     if (!isAdminRequest(request)) return json({ error: "Não autorizado" }, 401);
     const body = await readJson<{ config: RouterConfig; mode: Mode }>(request, 16_384);
-    if(!configureDevice(path[1], body.config, body.mode))return json({ error: "Equipamento não encontrado" }, 404);
+    const configured=configureDevice(path[1],body.config,body.mode);
+    if(!configured.ok)return json({error:configured.error},configured.status);
     queuePortalRefresh(path[1]);
     return json({ status: "ready" });
   }

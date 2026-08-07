@@ -198,7 +198,7 @@ export default function Home() {
       const response = await fetch(`/api/provisioning/devices/${selectedDeviceId}/configure`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ config: routerConfig, mode }),
       });
-      if (!response.ok) throw new Error("Não foi possível liberar a configuração.");
+      if (!response.ok) {const payload=await response.json().catch(()=>({})) as {error?:string};throw new Error(payload.error||"Não foi possível liberar a configuração.");}
       notify("Configuração liberada. O MikroTik instalará em até 30 segundos.");
       await refreshDevices();
     } catch (error) {
