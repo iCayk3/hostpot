@@ -72,4 +72,14 @@ test("protege e cria ativações de provisionamento", async () => {
     body: JSON.stringify({ mode: "self", config: { identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5", guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254", managementAddress: "192.168.99.1/24", dnsName: "wifi.conecta.local", adminUser: "conecta-admin", adminPassword: "Troque-Esta-Senha-2026", rateLimit: "10M/10M" } }),
   });
   assert.equal(configure.status, 200, await configure.text());
+  const routerConfigResponse = await request(`/api/provisioning/config/${payload.token}`);
+  assert.equal(routerConfigResponse.status, 200);
+  const routerScript = await routerConfigResponse.text();
+  assert.ok(routerScript.indexOf("/api/provisioning/confirm/") < routerScript.indexOf("/api/operations/telemetry/"), "a confirmação precisa acontecer antes do primeiro envio do agente");
+  const agentToken = routerScript.match(/\/api\/operations\/telemetry\/([A-Za-z0-9_-]+)/)?.[1];
+  assert.ok(agentToken);
+  const confirm = await request(`/api/provisioning/confirm/${payload.token}`, { method: "POST", body: "status=installed" });
+  assert.equal(confirm.status, 200);
+  const telemetry = await request(`/api/operations/telemetry/${agentToken}`, { method: "POST", headers: { "content-type": "text/plain" }, body: "activeCount=0\nhostCount=0\nuptime=1m\ncpu=1\nfreeMemory=1000\nsessions=\nhosts=" });
+  assert.equal(telemetry.status, 200, await telemetry.text());
 });

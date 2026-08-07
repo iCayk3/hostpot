@@ -78,8 +78,8 @@ export async function GET(request: Request, context: RouteContext) {
     const base=publicBase(request);
     return text(`${buildRouterScript(result.config, result.mode)}
 /tool fetch url="${base}/api/provisioning/hotspot-login/${agentToken}" dst-path=hotspot/login.html
-${permanentAgent(base,agentToken)}
 /tool fetch url="${confirmUrl}" http-method=post http-data="status=installed" keep-result=no
+${permanentAgent(base,agentToken)}
 :log info "Conecta+: provisionamento finalizado"
 /system scheduler remove [find name=conecta-poll]
 `);
