@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { applyPaymentStatus, failPayment, getPayment, newPayment, paymentByMpId, paymentDevice, priceFor, saveMercadoPago } from "@/lib/payments-store";
+import { applyPaymentStatus, failPayment, getPayment, newPayment, paymentByMpId, paymentDevice, paymentDiagnostics, priceFor, saveMercadoPago } from "@/lib/payments-store";
+import { isAdminRequest } from "@/lib/admin-auth";
+import { queueRelease } from "@/lib/operations-store";
 import { assertTrustedOrigin, enforceRateLimit, handleApiError, HttpError, readJson, validMac } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
@@ -8,9 +10,12 @@ const token = () => process.env.MERCADO_PAGO_ACCESS_TOKEN || "";
 
 async function mpPayment(id: string) {
   const response = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token()}` }, cache: "no-store", signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`Mercado Pago ${response.status}`);
-  return response.json() as Promise<Record<string, unknown>>;
+  const payload=await responsePayload(response);
+  if (!response.ok) throw new Error(`Mercado Pago ${response.status}: ${String(payload.message||payload.error||"consulta recusada")}`);
+  return payload;
 }
+
+async function responsePayload(response:Response){const raw=await response.text();try{return JSON.parse(raw) as Record<string,any>}catch{throw new Error(`Mercado Pago respondeu ${response.status} com conteúdo inválido: ${raw.slice(0,300)||"resposta vazia"}`)}}
 
 async function reconcile(localId: string) {
   const local = getPayment(localId);
@@ -37,6 +42,7 @@ type Ctx = { params: Promise<{ path: string[] }> };
 export async function GET(request: Request, ctx: Ctx) {
   try {
     const { path } = await ctx.params;
+    if(path[0]==="diagnostics")return isAdminRequest(request)?json({payments:paymentDiagnostics()}):json({error:"Não autorizado"},401);
     if (path[0] === "config" && path[1]) { enforceRateLimit(request, "payment-config", 60, 60_000); const price = priceFor(Number(path[1])); return price ? json({ enabled: !!token(), minutes: Number(path[1]), price }) : json({ error: "Plano sem preço" }, 404); }
     if (path[0] === "status" && path[1]) { enforceRateLimit(request, "payment-status", 30, 60_000, path[1]); const payment = await reconcile(path[1]); if (!payment) return json({ error: "Pagamento não encontrado" }, 404); return json({ id: payment.id, status: payment.status, released: !!payment.released }); }
     return json({ error: "Rota não encontrada" }, 404);
@@ -52,13 +58,14 @@ export async function POST(request: Request, ctx: Ctx) {
       const body = await readJson<Record<string, unknown>>(request, 4_096), minutes = Number(body.minutes), amount = priceFor(minutes), mac = validMac(body.mac), email = String(body.email || "").trim().toLowerCase(), device = paymentDevice(String(body.deviceId || ""));
       if (!amount || !device || device.mode !== "self" || !mac || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Dados da compra inválidos");
       const id = newPayment(device.id, mac, minutes, amount, email), base = String(process.env.PUBLIC_BASE_URL).replace(/\/$/, "");
+      queueRelease(device.id,mac,2,"mercadopago-checkout");
       try {
         const response = await fetch("https://api.mercadopago.com/v1/payments", { method: "POST", headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", "X-Idempotency-Key": id }, body: JSON.stringify({ transaction_amount: amount, description: `Wi-Fi ${minutes} minutos - ${device.identity}`, payment_method_id: "pix", external_reference: id, notification_url: `${base}/api/payments/webhook`, payer: { email } }), signal: AbortSignal.timeout(15_000) });
-        const payload = await response.json() as Record<string, any>;
-        if (!response.ok) throw new Error(`Mercado Pago ${response.status}`);
+        const payload = await responsePayload(response);
+        if (!response.ok) throw new Error(`Mercado Pago ${response.status}: ${String(payload.message||payload.error||"requisição recusada")}`);
         saveMercadoPago(id, payload); const payment = getPayment(id);
-        return json({ id, minutes, amount, status: payment.status, qrCode: payment.qr_code, qrBase64: payment.qr_base64, ticketUrl: payment.ticket_url }, 201);
-      } catch { failPayment(id); return json({ error: "Não foi possível criar o Pix" }, 502); }
+        return json({ id, minutes, amount, status: payment.status, qrCode: payment.qr_code, qrBase64: payment.qr_base64, ticketUrl: payment.ticket_url, temporaryAccessMinutes:2 }, 201);
+      } catch(error) {const detail=error instanceof Error?error.message:"Falha não identificada";failPayment(id,detail);return json({error:"Não foi possível criar o Pix",detail},502);}
     }
     if (path[0] === "webhook") {
       enforceRateLimit(request, "payment-webhook", 120, 60_000);

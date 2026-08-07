@@ -38,6 +38,7 @@ export default function Home() {
   const [loginUsername,setLoginUsername]=useState("admin");
   const [authChecked,setAuthChecked]=useState(false);
   const [overviewData,setOverviewData]=useState<{totals:{routers:number;active:number;hosts:number;updated_at:string|null};sessions:Array<{identity:string;username:string;address:string;mac:string;uptime:string;time_left:string}>}>({totals:{routers:0,active:0,hosts:0,updated_at:null},sessions:[]});
+  const [paymentDiagnostics,setPaymentDiagnostics]=useState<Array<{id:string;identity:string;mac:string;minutes:number;amount:number;status:string;mp_payment_id:string|null;last_error:string|null;created_at:string}>>([]);
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
     guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254",
@@ -70,7 +71,7 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {}).finally(()=>setAuthChecked(true));
   }, []);
-  useEffect(()=>{if(view!=="admin"||!adminAuthenticated)return;const load=()=>fetch("/api/operations/overview",{cache:"no-store"}).then(r=>r.ok?r.json():null).then(p=>p&&setOverviewData(p));load();const t=window.setInterval(load,10000);return()=>window.clearInterval(t)},[view,adminAuthenticated]);
+  useEffect(()=>{if(view!=="admin"||!adminAuthenticated)return;const load=()=>Promise.all([fetch("/api/operations/overview",{cache:"no-store"}).then(r=>r.ok?r.json():null),fetch("/api/payments/diagnostics",{cache:"no-store"}).then(r=>r.ok?r.json():null)]).then(([overview,payments])=>{if(overview)setOverviewData(overview);if(payments)setPaymentDiagnostics(payments.payments||[])});load();const t=window.setInterval(load,10000);return()=>window.clearInterval(t)},[view,adminAuthenticated]);
 
   function openAdministration() {
     if (adminAuthenticated) return setView("admin");
@@ -288,6 +289,13 @@ export default function Home() {
               <article><span className="stat-icon blue">◷</span><small>MikroTiks cadastrados</small><strong>{overviewData.totals.routers}</strong><em>{overviewData.totals.updated_at?`Atualizado ${new Date(overviewData.totals.updated_at).toLocaleTimeString("pt-BR")}`:"Sem telemetria"}</em></article>
               <article><span className="stat-icon orange">⌁</span><small>Hosts aguardando</small><strong>{overviewData.totals.hosts}</strong><em>Dados recebidos do HotSpot</em></article>
             </div>
+            <article className="sessions-card">
+              <div className="section-heading"><div><h2>Homologação Mercado Pago</h2><p>Últimas tentativas Pix e resposta técnica recebida pelo backend.</p></div></div>
+              <div className="session-table">
+                <div className="table-row table-head"><span>ROTEADOR / MAC</span><span>PLANO</span><span>STATUS</span><span>ERRO / ID MP</span><span /></div>
+                {paymentDiagnostics.length===0?<div className="empty">Nenhuma tentativa de pagamento registrada.</div>:paymentDiagnostics.map(payment=><div className="table-row" key={payment.id}><span><strong>{payment.identity}</strong><small>{payment.mac}</small></span><span>{payment.minutes} min · {Number(payment.amount).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span><span><b className={payment.status==="approved"?"status-active":""}>{payment.status}</b></span><span title={payment.last_error||payment.mp_payment_id||""}>{payment.last_error||payment.mp_payment_id||"Aguardando resposta"}</span><span>{new Date(payment.created_at).toLocaleTimeString("pt-BR")}</span></div>)}
+              </div>
+            </article>
 
             <div className="control-grid">
               <article className="mode-card">

@@ -35,6 +35,7 @@ function bootstrapScript(base: string, token: string) {
 
 function permanentAgent(base:string,token:string){const telemetry=`${base}/api/operations/telemetry/${token}`,commands=`${base}/api/operations/commands/${token}`;return `/system scheduler remove [find name=conecta-agent]
 /system script remove [find name=conecta-agent]
+:log info "Conecta+: instalando agente permanente"
 /system script add name=conecta-agent source={
 :local activeCount [:len [/ip hotspot active find]]
 :local hostCount [:len [/ip hotspot host find where authorized=no]]
@@ -48,7 +49,8 @@ function permanentAgent(base:string,token:string){const telemetry=`${base}/api/o
 /import file-name=conecta-command.rsc
 }
 /system scheduler add name=conecta-agent interval=15s start-time=startup on-event=conecta-agent
-/system script run conecta-agent`}
+/system script run conecta-agent
+:log info "Conecta+: agente permanente ativo"`}
 
 function parsePayload(raw: string) {
   return Object.fromEntries(raw.split(/\r?\n/).map((line) => {
@@ -76,9 +78,11 @@ export async function GET(request: Request, context: RouteContext) {
     if (!agentToken) return text(":error \"Ativacao invalida\"", 401);
     const confirmUrl = `${publicBase(request)}/api/provisioning/confirm/${path[1]}`;
     const base=publicBase(request);
-    return text(`${buildRouterScript(result.config, result.mode)}
+    return text(`:log info "Conecta+: iniciando aplicacao da configuracao"
+${buildRouterScript(result.config, result.mode)}
 /tool fetch url="${base}/api/provisioning/hotspot-login/${agentToken}" dst-path=hotspot/login.html
 /tool fetch url="${confirmUrl}" http-method=post http-data="status=installed" keep-result=no
+:log info "Conecta+: servidor confirmou a instalacao"
 ${permanentAgent(base,agentToken)}
 :log info "Conecta+: provisionamento finalizado"
 /system scheduler remove [find name=conecta-poll]

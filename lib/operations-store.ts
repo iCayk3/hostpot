@@ -84,7 +84,7 @@ export function saveTelemetry(tokenHash: string, values: Record<string,string>) 
 }
 
 export function queueRelease(deviceId:string,mac:string,minutes:number,operatorId:string){
-  const safeMac=validMac(mac);if(!safeMac||![5,10,15,30,60].includes(minutes)) return null;
+  const safeMac=validMac(mac),paymentWindow=minutes===2&&operatorId==="mercadopago-checkout";if(!safeMac||(!paymentWindow&&![5,10,15,30,60].includes(minutes))) return null;
   const id=randomUUID(), tag=`conecta-${id.slice(0,8)}`, script=`/ip hotspot ip-binding remove [find mac-address=${safeMac}]\n/ip hotspot ip-binding add mac-address=${safeMac} type=bypassed comment=\"${tag}\"\n/system scheduler add name=${tag} interval=${minutes}m start-time=startup on-event=\"/ip hotspot ip-binding remove [find comment=${tag}]; /system scheduler set [find name=${tag}] disabled=yes\"`;
   db.prepare("INSERT INTO access_releases VALUES (?,?,?,?,?,?,?,NULL)").run(id,deviceId,safeMac,minutes,"queued",cleanText(operatorId,64),now());
   db.prepare("INSERT INTO router_commands VALUES (?,?,?,?,?,NULL)").run(id,deviceId,script,"pending",now()); return id;
