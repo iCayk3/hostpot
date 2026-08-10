@@ -14,8 +14,15 @@ test("temporizadores de acesso começam no momento da criação",()=>{
 });
 
 test("expiração remove somente a regra identificada pela liberação",()=>{
-  assert.match(source,/ip hotspot ip-binding remove \[find comment=\$\{tag\}\]/);
+  assert.match(source,/ip hotspot ip-binding find comment=\$\{tag\}/);
+  assert.match(source,/ip hotspot ip-binding remove .*accessBinding/);
   assert.doesNotMatch(source,/acesso expirado[\s\S]{0,300}ip hotspot ip-binding remove \[find mac-address=\$\{expired\.mac\}\]/);
+});
+
+test("fim do plano devolve o dispositivo ao portal sem encerrar uma liberação nova",()=>{
+  assert.match(source,/:local accessBinding \[\/ip hotspot ip-binding find comment=\$\{tag\}\]/);
+  assert.match(source,/ip hotspot host remove \[find mac-address=\$\{safeMac\}\]/);
+  assert.match(source,/UPDATE access_releases SET status='superseded'/);
 });
 
 test("comando exige confirmação do equipamento antes de iniciar o período",()=>{
