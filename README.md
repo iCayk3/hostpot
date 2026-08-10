@@ -1,109 +1,93 @@
 # Conecta+ HotSpot
 
-Portal de acesso Wi-Fi e painel de preparação de MikroTik. Esta versão contém a interface do visitante, os dois modos de liberação e o gerador inicial de scripts RouterOS 7.
+Sistema de portal cativo para MikroTik RouterOS 7, com provisionamento automático, gestão de operadores, telemetria, controle de sessões e venda de acesso por Pix ou dinheiro.
 
-## Executar com Docker
+## Documentação
 
-```bash
-cp .env.example .env
-docker compose up -d --build
-```
+- [Instalação com Docker e Portainer](docs/INSTALACAO-DOCKER.md)
+- [Instalação direta no Ubuntu Server 24.04](deploy/ubuntu/README.md)
+- [Configuração inicial do sistema](docs/CONFIGURACAO.md)
+- [Provisionamento e teste do MikroTik](docs/MIKROTIK.md)
 
-A aplicação estará disponível em `http://localhost` (porta 80). O estado do provisionamento é persistido no volume `conecta_data`.
+## Recursos
 
-O container escuta diretamente na porta 80, sem tradução ou publicação de portas. A Stack entra em uma rede Docker externa já criada: informe seu nome em `DOCKER_NETWORK_NAME` e um IP livre pertencente a ela em `DOCKER_STATIC_IP`. A Stack não cria nem modifica a sub-rede existente.
-O processo permanece no usuário restrito `node`. O container permite portas não privilegiadas a partir de 0, possibilitando escutar na porta 80 sem executar a aplicação como root.
+- Modo **Visitante escolhe o tempo**, com planos de 5, 10, 15, 30 ou 60 minutos.
+- Pagamento via Pix Mercado Pago ou confirmação de pagamento em espécie.
+- Janela temporária de 2 minutos para o cliente efetuar o pagamento; ela não é descontada do plano comprado.
+- Modo **Administrador libera**, com painel operacional separado.
+- Usuários operadores vinculados somente aos equipamentos autorizados.
+- Provisionamento de um RouterOS 7 resetado por um único comando.
+- Telemetria, dispositivos aguardando, sessões ativas e tempo restante com dados reais.
+- Limitação de banda configurável por equipamento.
+- Encerramento manual ou automático; ao expirar, o dispositivo retorna ao portal.
+- Relatórios financeiros e histórico de pagamentos.
+- Banco SQLite persistente e credenciais do Mercado Pago criptografadas.
 
-Verifique a saúde do serviço:
+## Requisitos de produção
 
-```bash
-curl http://localhost/api/health
-```
+- Domínio público com HTTPS e certificado válido.
+- Servidor acessível pelo MikroTik através da internet; o roteador pode estar atrás de NAT.
+- Docker Engine com Compose/Portainer, ou Ubuntu Server 24.04 AMD64/ARM64.
+- MikroTik com RouterOS 7 e acesso à internet pela porta WAN.
+- Proxy reverso para HTTPS quando usar Docker.
 
-## Implantar como Stack no Portainer
+## Variáveis obrigatórias
 
-1. Publique este diretório em um repositório GitHub.
-2. No Portainer, abra **Stacks → Add stack → Repository**.
-3. Informe a URL do repositório e use `docker-compose.yml` como caminho do Compose.
-4. Cadastre `PUBLIC_BASE_URL`, `ACTIVATION_TOKEN_SECRET`, `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`, `DOCKER_NETWORK_NAME` e `DOCKER_STATIC_IP`.
-5. Faça o deploy da Stack.
-
-O domínio público deverá apontar para um proxy reverso HTTPS, como Nginx Proxy Manager, Traefik ou Cloudflare Tunnel. O MikroTik deverá acessar `PUBLIC_BASE_URL` por HTTPS com certificado válido.
-
-## Variáveis
-
-| Variável | Finalidade |
+| Variável | Descrição |
 | --- | --- |
-| `ADMIN_USERNAME` | Usuário administrador, padrão `admin` |
-| `DOCKER_NETWORK_NAME` | Nome exato da rede Docker externa que já existe no Portainer |
-| `DOCKER_STATIC_IP` | IP fixo livre pertencente à sub-rede configurada nessa rede |
-| `PUBLIC_BASE_URL` | Endereço HTTPS público da aplicação |
-| `ACTIVATION_TOKEN_SECRET` | Segredo usado futuramente nos códigos de ativação |
-| `ADMIN_PASSWORD` | Senha para abrir o painel administrativo |
-| `ADMIN_SESSION_SECRET` | Assinatura das sessões administrativas |
-| `PROVISIONING_DATA_DIR` | Diretório interno persistente, configurado como `/data` |
-| `MERCADO_PAGO_ACCESS_TOKEN` | Access Token privado usado somente pelo backend para criar e consultar Pix |
-| `MERCADO_PAGO_WEBHOOK_SECRET` | Assinatura secreta configurada nos Webhooks do Mercado Pago |
-| `PIX_BLOCKED_DOMAINS` | Domínios bloqueados na janela de compatibilidade Pix de dois minutos; os demais sites HTTPS ficam disponíveis somente para o IP pagador |
-| `PIX_TEMP_RATE_LIMIT` | Limite de banda durante os dois minutos para pagamento, padrão `1M/1M` |
-| `PIX_PRICE_5` ... `PIX_PRICE_60` | Preços dos planos de 5, 10, 15, 30 e 60 minutos |
+| `PUBLIC_BASE_URL` | URL pública HTTPS, sem caminho e sem barra final. Ex.: `https://wifi.exemplo.com.br` |
+| `ACTIVATION_TOKEN_SECRET` | Segredo aleatório com pelo menos 32 caracteres para tokens dos equipamentos |
+| `ADMIN_USERNAME` | Usuário administrativo inicial; normalmente `admin` |
+| `ADMIN_PASSWORD` | Senha administrativa forte, com no mínimo 16 caracteres |
+| `ADMIN_SESSION_SECRET` | Outro segredo aleatório, diferente do segredo de ativação |
 
-## Pagamento Pix
+No Docker também são obrigatórias:
 
-Com `MERCADO_PAGO_ACCESS_TOKEN` configurado, o modo **Visitante escolhe** passa a direcionar os planos para `/comprar`, onde é criado um QR Code Pix dinâmico. O pagamento aprovado gera automaticamente a liberação temporária do MAC no MikroTik. Use credenciais de teste durante a homologação e configure `PUBLIC_BASE_URL` com HTTPS público para o recebimento do webhook.
+| Variável | Descrição |
+| --- | --- |
+| `DOCKER_NETWORK_NAME` | Nome exato da rede Docker externa já existente |
+| `DOCKER_STATIC_IP` | IP livre pertencente à sub-rede dessa rede externa |
 
-Nunca publique o arquivo `.env`, senhas de roteadores, backups ou tokens no GitHub.
+Variáveis opcionais:
 
-## Checklist obrigatório para publicar
+| Variável | Padrão | Descrição |
+| --- | --- | --- |
+| `PIX_TEMP_RATE_LIMIT` | `1M/1M` | Banda da janela temporária de pagamento |
+| `PIX_BLOCKED_DOMAINS` | Lista incluída no exemplo | Domínios bloqueados durante a janela de pagamento |
+| `PROVISIONING_DATA_DIR` | `/data` no Docker | Diretório persistente do banco |
 
-1. Crie um domínio exclusivo, aponte-o ao proxy reverso e emita um certificado TLS válido.
-2. No proxy, encaminhe o domínio para `conecta:80` pela mesma rede Docker. Não publique a porta 80 do contêiner diretamente na Internet.
-3. Defina `PUBLIC_BASE_URL=https://seu-dominio` sem caminho adicional.
-4. Gere valores aleatórios diferentes para `ACTIVATION_TOKEN_SECRET` e `ADMIN_SESSION_SECRET` (por exemplo, `openssl rand -base64 48`) e use uma senha administrativa única com gerenciador de senhas.
-5. Se o Mercado Pago estiver ativo, configure também `MERCADO_PAGO_WEBHOOK_SECRET`; a aplicação recusa iniciar em produção sem ele.
-6. Faça backup periódico do volume `conecta_data`, restrinja o acesso ao Portainer e mantenha Docker/host atualizados.
-7. No proxy ou firewall de borda, aplique limitação adicional por IP. A proteção interna atende uma única réplica; para escalar horizontalmente, use um limitador compartilhado no proxy/Redis.
+As credenciais e os preços do Mercado Pago devem ser cadastrados em **Administração → Integrações**. As antigas variáveis `MERCADO_PAGO_*` e `PIX_PRICE_*` continuam aceitas apenas para compatibilidade.
 
-Em produção, a aplicação recusa iniciar com HTTP, senha `admin`, segredos ausentes ou segredos curtos. Os cookies administrativos usam `HttpOnly`, `SameSite=Strict` e `Secure` quando o endereço público é HTTPS.
+## Verificação rápida
 
-## Desenvolvimento local
+Depois de instalar:
 
-Requer Node.js 22.13 ou superior.
+```bash
+curl https://wifi.exemplo.com.br/api/health
+```
+
+Resultado esperado:
+
+```json
+{"status":"ok"}
+```
+
+Em seguida, acesse a URL pública, entre com o administrador e siga [Configuração inicial](docs/CONFIGURACAO.md).
+
+## Atualização e backup
+
+Antes de atualizar, faça backup do volume `conecta_data` no Docker ou execute `sudo conecta-backup` na instalação Ubuntu. Não altere `ACTIVATION_TOKEN_SECRET` ou `ADMIN_SESSION_SECRET` depois que equipamentos e usuários estiverem cadastrados.
+
+Nunca publique `.env`, banco SQLite, backups, senhas ou tokens no GitHub.
+
+## Desenvolvimento
+
+Requer Node.js 24.
 
 ```bash
 npm install
 npm run dev
-npm run build
+npm test
 ```
 
-## Teste de bancada
-
-1. Implante a Stack e confirme que `/api/health` responde com `status: ok`.
-2. Entre em **Administração → Instalar MikroTik** usando `ADMIN_PASSWORD`.
-3. Clique em **Gerar código de ativação** e copie o comando.
-4. No MikroTik resetado, deixe a WAN com internet e execute o comando no terminal.
-5. Aguarde o equipamento aparecer no painel, confira as interfaces e selecione-o.
-6. Ajuste as portas, endereços e modo de acesso.
-7. Clique em **Liberar instalação automática**.
-8. Aguarde o estado mudar para **Instalado**.
-
-Faça o primeiro teste com acesso físico ao equipamento. O firewall final permite gerenciamento somente pela porta e rede definidas no formulário.
-
-## Estado atual
-
-- Portal do visitante responsivo.
-- Tempos de 5, 10, 15, 30 e 60 minutos na especificação do MikroTik.
-- Modo automático e modo controlado pelo administrador.
-- Gerador de script RouterOS 7 com DHCP, HotSpot, NAT e firewall.
-- Imagem Docker e Stack para Portainer.
-- Endpoint de saúde para monitoramento.
-- Registro automático com código temporário e comando único.
-- Detecção de modelo, serial, versão e interfaces.
-- Banco SQLite persistente em `/data/conecta.db`.
-- Entrega automática da configuração e confirmação da instalação.
-- Painel administrativo protegido por senha e sessão assinada.
-- Agente RouterOS permanente com telemetria a cada 15 segundos.
-- Tela operacional separada em `/gestao`.
-- Usuários vinculados somente aos MikroTiks autorizados em `/usuarios`.
-- Sessões, hosts, contadores e históricos obtidos do banco, sem números demonstrativos.
-- Fila de liberação real para 5, 10, 15, 30 ou 60 minutos.
+`npm test` compila a versão de produção e executa os testes automatizados do portal, APIs, provisionamento e ciclo de liberação.
