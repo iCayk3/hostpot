@@ -1,5 +1,5 @@
 import { buildRouterScript, type Mode, type RouterConfig } from "@/lib/router-script";
-import { activateAgentToken, configurationForAgentToken, configurationForToken, configureDevice, confirmInstallation, createActivation, listDevices, registerDevice, updateDeviceMode, validateToken } from "@/lib/provisioning-store";
+import { activateAgentToken, configurationForAgentToken, configurationForToken, configureDevice, confirmInstallation, createActivation, listDevices, registerDevice, renameDevice, updateDeviceMode, validateToken } from "@/lib/provisioning-store";
 import { isAdminRequest } from "@/lib/admin-auth";
 import { queuePortalRefresh } from "@/lib/operations-store";
 import { assertTrustedOrigin, enforceRateLimit, handleApiError, readJson, readText } from "@/lib/security";
@@ -88,7 +88,7 @@ ${permanentAgent(base,agentToken)}
 /system scheduler remove [find name=conecta-poll]
 `);
   }
-  if(path[0]==="hotspot-login"&&path[1]){const result=configurationForAgentToken(path[1]);if(!result||!result.config||!result.mode)return text("Ativação inválida",404);const paymentBase=process.env.MERCADO_PAGO_ACCESS_TOKEN&&result.deviceId?`${publicBase(request)}/comprar?device=${encodeURIComponent(result.deviceId)}&mac=$(mac)&ip=$(ip)`:undefined;return new Response(hotspotLogin(result.mode,result.config.identity,paymentBase),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}})}
+  if(path[0]==="hotspot-login"&&path[1]){const result=configurationForAgentToken(path[1]);if(!result||!result.config||!result.mode)return text("Acesso temporariamente indisponível",404);const paymentBase=result.deviceId?`${publicBase(request)}/comprar?device=${encodeURIComponent(result.deviceId)}&mac=$(mac)&ip=$(ip)`:undefined;return new Response(hotspotLogin(result.mode,"Conecta+",paymentBase),{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"}})}
   return json({ error: "Rota não encontrada" }, 404);
 }
 
@@ -121,6 +121,7 @@ async function post(request: Request, context: RouteContext) {
     return json({ status: "ready" });
   }
   if(path[0]==="devices"&&path[1]&&path[2]==="mode"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);assertTrustedOrigin(request);const body=await readJson<{mode:Mode}>(request,1024);if(!updateDeviceMode(path[1],body.mode))return json({error:"Modo ou equipamento inválido"},400);queuePortalRefresh(path[1]);return json({status:"queued",mode:body.mode})}
+  if(path[0]==="devices"&&path[1]&&path[2]==="name"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);assertTrustedOrigin(request);const body=await readJson<{name:string}>(request,1024);return renameDevice(path[1],body.name)?json({status:"saved"}):json({error:"Nome inválido ou equipamento não encontrado"},400)}
   if (path[0] === "confirm" && path[1]) {
     return confirmInstallation(path[1]) ? json({ status: "installed" }) : json({ error: "Ativação inválida" }, 404);
   }

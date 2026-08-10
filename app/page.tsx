@@ -8,7 +8,7 @@ type View = "portal" | "admin";
 type AdminSection = "overview" | "sessions" | "setup";
 type ProvisionedDevice = {
   id: string; code: string; serial: string; model: string; architecture: string; routerosVersion: string;
-  identity: string; interfaces: string[]; status: string; lastSeen: string; installedAt: string | null;
+  identity: string; displayName: string; interfaces: string[]; status: string; lastSeen: string; installedAt: string | null;
 };
 type Activation = { code: string; command: string; expiresAt: string };
 
@@ -213,6 +213,7 @@ export default function Home() {
   }
 
   async function saveAccessMode(){if(!selectedDeviceId)return notify("Selecione o MikroTik que receberá esta configuração.");setProvisioningBusy(true);try{const response=await fetch(`/api/provisioning/devices/${selectedDeviceId}/mode`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode})});if(!response.ok)throw new Error("Não foi possível alterar o modo.");notify("Modo salvo e atualização enviada ao MikroTik. Aguarde até 15 segundos.");await refreshDevices()}catch(error){notify(error instanceof Error?error.message:"Falha ao alterar o modo.")}finally{setProvisioningBusy(false)}}
+  async function nameSelectedDevice(){const device=devices.find(item=>item.id===selectedDeviceId);if(!device)return notify("Selecione um equipamento para nomear.");const answer=await openDialog({title:"Nomear equipamento",message:`Defina um nome amigável para identificar internamente o equipamento de serial ${device.serial}.`,kind:"prompt",value:device.displayName||device.identity,confirmLabel:"Salvar nome"});if(!answer.confirmed)return;const response=await fetch(`/api/provisioning/devices/${device.id}/name`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:answer.value})});const payload=await response.json().catch(()=>({})) as {error?:string};if(!response.ok)return notify(payload.error||"Não foi possível salvar o nome.");await refreshDevices();notify("Nome do equipamento atualizado.")}
 
   if(!authChecked)return <main className="ops-login"><p>Carregando acesso seguro...</p></main>;
   if(!adminAuthenticated)return <main className="ops-login"><form onSubmit={submitAdminLogin}><span className="brand-mark"><i/><i/><i/></span><span className="eyebrow">ACESSO AO SISTEMA</span><h1>Entrar no Conecta+</h1><p>Administradores acessam a configuração; usuários são direcionados aos MikroTiks permitidos.</p><label>USUÁRIO<input value={loginUsername} onChange={e=>setLoginUsername(e.target.value)} autoFocus autoComplete="username"/></label><label>SENHA<input type="password" value={loginPassword} onChange={e=>setLoginPassword(e.target.value)} autoComplete="current-password"/></label><button disabled={loginBusy||!loginUsername||!loginPassword}>{loginBusy?"Entrando...":"Entrar →"}</button></form></main>;
@@ -282,7 +283,7 @@ export default function Home() {
       ) : (
         <section className="admin-view">
           <aside className="admin-sidebar">
-            <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button><button onClick={()=>window.location.href="/usuarios"}>♙ <span>Usuários e permissões</span></button><button onClick={()=>window.location.href="/gestao"}>↗ <span>Painel operacional</span></button></div>
+            <div><span className="sidebar-label">GESTÃO DA REDE</span><button className={adminSection === "overview" ? "side-active" : ""} onClick={() => setAdminSection("overview")}>⌂ <span>Visão geral</span></button><button onClick={()=>window.location.href="/financeiro"}>▥ <span>Financeiro</span></button><button className={adminSection === "sessions" ? "side-active" : ""} onClick={() => setAdminSection("sessions")}>◷ <span>Sessões ativas</span></button><button className={adminSection === "setup" ? "side-active" : ""} onClick={() => setAdminSection("setup")}>⚙ <span>Instalar MikroTik</span></button><button onClick={()=>window.location.href="/usuarios"}>♙ <span>Usuários e permissões</span></button><button onClick={()=>window.location.href="/gestao"}>↗ <span>Painel operacional</span></button></div>
             <div className="admin-user"><span>AD</span><div><strong>Administrador</strong><small>{loginUsername}</small></div><button type="button" onClick={logoutAdmin}>Sair</button></div>
           </aside>
           <div className="admin-content">
@@ -309,7 +310,7 @@ export default function Home() {
                   <button className={mode === "self" ? "selected" : ""} onClick={() => setMode("self")}><span className="radio" /><div><strong>Visitante escolhe o tempo</strong><small>As opções de duração aparecem no portal de acesso.</small></div><b>Automático</b></button>
                   <button className={mode === "admin" ? "selected" : ""} onClick={() => setMode("admin")}><span className="radio" /><div><strong>Administrador libera o tempo</strong><small>Cada novo dispositivo aguarda sua aprovação.</small></div><b>Controle total</b></button>
                 </div>
-                <div className="mode-footer"><select aria-label="MikroTik que receberá o modo" value={selectedDeviceId} onChange={e=>setSelectedDeviceId(e.target.value)}><option value="">Selecione o MikroTik</option>{devices.map(device=><option key={device.id} value={device.id}>{device.identity} · {device.model}</option>)}</select><span>A alteração será enviada ao equipamento selecionado.</span><button disabled={provisioningBusy||!selectedDeviceId} onClick={saveAccessMode}>{provisioningBusy?"Enviando...":"Salvar configuração"}</button></div>
+                <div className="mode-footer"><select aria-label="Equipamento que receberá o modo" value={selectedDeviceId} onChange={e=>setSelectedDeviceId(e.target.value)}><option value="">Selecione o equipamento</option>{devices.map(device=><option key={device.id} value={device.id}>{device.displayName||device.identity} · {device.model}</option>)}</select><span>A alteração será enviada ao equipamento selecionado.</span><button disabled={provisioningBusy||!selectedDeviceId} onClick={saveAccessMode}>{provisioningBusy?"Enviando...":"Salvar configuração"}</button></div>
               </article>
 
               <article className="quick-release">
@@ -339,10 +340,10 @@ export default function Home() {
                 </div>}
               </article>
               <article className="detected-card">
-                <div className="section-heading"><div><h2>Equipamentos detectados</h2><p>A lista é atualizada automaticamente a cada cinco segundos.</p></div><button className="text-button" onClick={refreshDevices}>Atualizar agora ↻</button></div>
+                <div className="section-heading"><div><h2>Equipamentos detectados</h2><p>A lista é atualizada automaticamente a cada cinco segundos.</p></div><div className="device-heading-actions"><button className="text-button" onClick={nameSelectedDevice}>Nomear selecionado</button><button className="text-button" onClick={refreshDevices}>Atualizar agora ↻</button></div></div>
                 {devices.length === 0 ? <div className="empty-device"><span>⌁</span><div><strong>Aguardando o primeiro MikroTik</strong><small>Gere o código acima e execute o comando no equipamento conectado à internet.</small></div></div> : <div className="device-list">{devices.map((device) => <button key={device.id} className={selectedDeviceId === device.id ? "selected" : ""} onClick={() => useDetectedInterfaces(device)}>
                   <span className={`device-state ${device.status}`} />
-                  <div><strong>{device.model}</strong><small>{device.identity} · Serial {device.serial}</small></div>
+                  <div><strong>{device.displayName||device.identity}</strong><small>{device.model} · {device.identity} · Serial {device.serial}</small></div>
                   <span>RouterOS {device.routerosVersion}</span><span>{device.interfaces.length} interfaces</span>
                   <b>{device.status === "installed" ? "Instalado" : device.status === "ready" ? "Instalando" : "Detectado"}</b>
                 </button>)}</div>}

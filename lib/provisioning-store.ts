@@ -4,7 +4,7 @@ import { database as db } from "./database";
 
 export type Device = {
   id: string; activationId: string; code: string; serial: string; model: string; architecture: string;
-  routerosVersion: string; identity: string; interfaces: string[]; status: string; lastSeen: string;
+  routerosVersion: string; identity: string; displayName: string; interfaces: string[]; status: string; lastSeen: string;
   installedAt: string | null; config: RouterConfig | null; mode: Mode | null;
 };
 
@@ -28,6 +28,10 @@ if (!deviceColumns.some((column) => column.name === "agent_token_hash")) {
   catch (error) { if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error; }
 }
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_agent_token_hash ON devices(agent_token_hash) WHERE agent_token_hash IS NOT NULL");
+if (!deviceColumns.some((column) => column.name === "display_name")) {
+  try { db.exec("ALTER TABLE devices ADD COLUMN display_name TEXT"); }
+  catch (error) { if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error; }
+}
 db.exec("PRAGMA optimize");
 
 export const hashToken = (token: string) => {const secret=process.env.ACTIVATION_TOKEN_SECRET||(process.env.NODE_ENV==="production"?"":"development-activation-secret");if(!secret)throw new Error("ACTIVATION_TOKEN_SECRET obrigatório");return createHmac("sha256",secret).update(token).digest("hex")};
@@ -98,6 +102,7 @@ export function configureDevice(id: string, config: RouterConfig, mode: Mode) {
 }
 
 export function updateDeviceMode(id:string,mode:Mode){if(mode!=="self"&&mode!=="admin")return false;const device=db.prepare("SELECT activation_id FROM devices WHERE id=?").get(id) as {activation_id:string}|undefined;if(!device)return false;db.prepare("UPDATE activations SET mode=? WHERE id=?").run(mode,device.activation_id);return true}
+export function renameDevice(id:string,name:string){const clean=String(name||"").trim().replace(/[<>\u0000-\u001f]/g,"").slice(0,80);if(clean.length<2)return false;return db.prepare("UPDATE devices SET display_name=? WHERE id=?").run(clean,id).changes>0}
 
 export function configurationForToken(token: string) {
   const activation = validateToken(token);
@@ -139,7 +144,7 @@ export function listDevices(): Device[] {
   return rows.map((row) => ({
     id: String(row.id), activationId: String(row.activation_id), code: String(row.code), serial: String(row.serial),
     model: String(row.model), architecture: String(row.architecture), routerosVersion: String(row.routeros_version),
-    identity: String(row.identity), interfaces: JSON.parse(String(row.interfaces_json)), status: String(row.status),
+    identity: String(row.identity), displayName:String(row.display_name||row.identity), interfaces: JSON.parse(String(row.interfaces_json)), status: String(row.status),
     lastSeen: String(row.last_seen), installedAt: row.installed_at, config: row.config_json ? JSON.parse(row.config_json) : null,
     mode: row.mode as Mode | null,
   }));

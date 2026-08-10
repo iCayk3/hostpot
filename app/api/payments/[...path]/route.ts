@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { applyPaymentStatus, approveCashPayment, failPayment, getPayment, newCashPayment, newPayment, paymentByMpId, paymentClientAddress, paymentDevice, paymentDiagnostics, priceFor, reopenPaymentWindow, saveMercadoPago } from "@/lib/payments-store";
+import { applyPaymentStatus, approveCashPayment, failPayment, financialReport, getPayment, newCashPayment, newPayment, paymentByMpId, paymentClientAddress, paymentDevice, paymentDiagnostics, priceFor, reopenPaymentWindow, saveMercadoPago } from "@/lib/payments-store";
 import { isAdminRequest,operatorFromRequest } from "@/lib/admin-auth";
 import { deviceDashboard,queuePaymentWindow } from "@/lib/operations-store";
 import { assertTrustedOrigin, enforceRateLimit, handleApiError, HttpError, readJson, validMac } from "@/lib/security";
@@ -43,6 +43,7 @@ type Ctx = { params: Promise<{ path: string[] }> };
 export async function GET(request: Request, ctx: Ctx) {
   try {
     const { path } = await ctx.params;
+    if(path[0]==="financial"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);const days=Number(new URL(request.url).searchParams.get("days")||30);return json(financialReport(days))}
     if(path[0]==="diagnostics"){const admin=isAdminRequest(request),operator=operatorFromRequest(request),deviceId=path[1];if(!admin&&!operator)return json({error:"Não autorizado"},401);if(deviceId&&!deviceDashboard(deviceId,admin?undefined:operator!))return json({error:"Sem acesso"},403);return json({payments:paymentDiagnostics(deviceId)})}
     if (path[0] === "config" && path[1]) { enforceRateLimit(request, "payment-config", 60, 60_000); const price = priceFor(Number(path[1])); return price ? json({ enabled: !!token(), minutes: Number(path[1]), price }) : json({ error: "Plano sem preço" }, 404); }
     if (path[0] === "status" && path[1]) { enforceRateLimit(request, "payment-status", 30, 60_000, path[1]); const payment = await reconcile(path[1]); if (!payment) return json({ error: "Pagamento não encontrado" }, 404); return json({ id: payment.id, status: payment.status, released: !!payment.released }); }
@@ -64,7 +65,7 @@ export async function POST(request: Request, ctx: Ctx) {
       const id = newPayment(device.id, mac, minutes, amount, email), base = String(process.env.PUBLIC_BASE_URL).replace(/\/$/, "");
       queuePaymentWindow(device.id,address,mac);
       try {
-        const response = await fetch("https://api.mercadopago.com/v1/payments", { method: "POST", headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", "X-Idempotency-Key": id }, body: JSON.stringify({ transaction_amount: amount, description: `Wi-Fi ${minutes} minutos - ${device.identity}`, payment_method_id: "pix", external_reference: id, notification_url: `${base}/api/payments/webhook`, payer: { email } }), signal: AbortSignal.timeout(15_000) });
+        const response = await fetch("https://api.mercadopago.com/v1/payments", { method: "POST", headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", "X-Idempotency-Key": id }, body: JSON.stringify({ transaction_amount: amount, description: `Acesso Wi-Fi por ${minutes} minutos`, payment_method_id: "pix", external_reference: id, notification_url: `${base}/api/payments/webhook`, payer: { email } }), signal: AbortSignal.timeout(15_000) });
         const payload = await responsePayload(response);
         if (!response.ok) throw new Error(`Mercado Pago ${response.status}: ${String(payload.message||payload.error||"requisição recusada")}`);
         saveMercadoPago(id, payload); const payment = getPayment(id);

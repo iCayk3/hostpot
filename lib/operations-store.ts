@@ -40,18 +40,18 @@ export function getOperator(id:string){return db.prepare("SELECT id,name,usernam
 export function listOperators() {
   return db.prepare(`SELECT o.id,o.name,o.username,o.active,o.created_at,COALESCE(group_concat(od.device_id),'') device_ids FROM operators o LEFT JOIN operator_devices od ON od.operator_id=o.id GROUP BY o.id ORDER BY o.name`).all().map((r:any)=>({...r,deviceIds:String(r.device_ids).split(',').filter(Boolean)}));
 }
-export function adminOverview(){const totals=db.prepare(`SELECT COUNT(*) routers,COALESCE(SUM(t.active_count),0) active,COALESCE(SUM(t.host_count),0) hosts,MAX(t.updated_at) updated_at FROM devices d LEFT JOIN telemetry t ON t.device_id=d.id`).get();const sessions=db.prepare(`SELECT d.identity,s.username,s.address,s.mac,s.uptime,s.time_left,s.updated_at FROM hotspot_sessions s JOIN devices d ON d.id=s.device_id ORDER BY s.updated_at DESC LIMIT 50`).all();return{totals,sessions}}
+export function adminOverview(){const totals=db.prepare(`SELECT COUNT(*) routers,COALESCE(SUM(t.active_count),0) active,COALESCE(SUM(t.host_count),0) hosts,MAX(t.updated_at) updated_at FROM devices d LEFT JOIN telemetry t ON t.device_id=d.id`).get();const sessions=db.prepare(`SELECT COALESCE(d.display_name,d.identity) identity,s.username,s.address,s.mac,s.uptime,s.time_left,s.updated_at FROM hotspot_sessions s JOIN devices d ON d.id=s.device_id ORDER BY s.updated_at DESC LIMIT 50`).all();return{totals,sessions}}
 
 export function operatorDevices(operatorId: string) {
-  return db.prepare(`SELECT d.id,d.serial,d.model,d.identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at
+  return db.prepare(`SELECT d.id,d.serial,d.model,COALESCE(d.display_name,d.identity) identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at
     FROM operator_devices od JOIN devices d ON d.id=od.device_id JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id WHERE od.operator_id=? ORDER BY d.identity`).all(operatorId);
 }
 
-export function allOperationalDevices(){return db.prepare(`SELECT d.id,d.serial,d.model,d.identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at FROM devices d JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id ORDER BY d.identity`).all()}
+export function allOperationalDevices(){return db.prepare(`SELECT d.id,d.serial,d.model,COALESCE(d.display_name,d.identity) identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at FROM devices d JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id ORDER BY COALESCE(d.display_name,d.identity)`).all()}
 
 export function deviceDashboard(deviceId: string, operatorId?: string) {
   if (operatorId && !db.prepare("SELECT 1 ok FROM operator_devices WHERE operator_id=? AND device_id=?").get(operatorId,deviceId)) return null;
-  const device = db.prepare(`SELECT d.id,d.serial,d.model,d.identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at FROM devices d JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id WHERE d.id=?`).get(deviceId) as any;
+  const device = db.prepare(`SELECT d.id,d.serial,d.model,COALESCE(d.display_name,d.identity) identity,d.status,d.last_seen,a.mode,t.active_count,t.host_count,t.uptime,t.cpu,t.free_memory,t.updated_at FROM devices d JOIN activations a ON a.id=d.activation_id LEFT JOIN telemetry t ON t.device_id=d.id WHERE d.id=?`).get(deviceId) as any;
   if (!device) return null;
   const sessions = db.prepare(`SELECT s.username,s.address,s.mac,s.uptime,s.time_left,s.updated_at,c.label,c.detected_name FROM hotspot_sessions s LEFT JOIN client_devices c ON c.device_id=s.device_id AND c.mac=s.mac WHERE s.device_id=? ORDER BY s.updated_at DESC`).all(deviceId);
   const hosts = db.prepare(`SELECT h.address,h.mac,h.authorized,h.updated_at,c.label,c.detected_name FROM hotspot_hosts h LEFT JOIN client_devices c ON c.device_id=h.device_id AND c.mac=h.mac WHERE h.device_id=? ORDER BY h.updated_at DESC`).all(deviceId);
@@ -60,7 +60,7 @@ export function deviceDashboard(deviceId: string, operatorId?: string) {
   const releasedMacs=new Set(adminAccesses.map(row=>String(row.mac||"").toUpperCase()));
   const activeMacs=new Set((sessions as any[]).map(row=>String(row.mac||"").toUpperCase()));
   device.host_count=(hosts as any[]).filter(row=>!row.authorized&&!releasedMacs.has(String(row.mac||"").toUpperCase())&&!activeMacs.has(String(row.mac||"").toUpperCase())).length;
-  const durationStats=db.prepare(`SELECT duration_minutes minutes,COUNT(*) total FROM access_events WHERE device_id=? AND started_at>=datetime('now','-1 day') GROUP BY duration_minutes ORDER BY duration_minutes`).all(deviceId);
+  const durationStats=db.prepare(`SELECT minutes,COUNT(*) total FROM pix_payments WHERE device_id=? AND datetime(created_at)>=datetime('now','-1 day') GROUP BY minutes ORDER BY minutes`).all(deviceId);
   return { device, sessions, hosts, releases,adminAccesses,durationStats };
 }
 
