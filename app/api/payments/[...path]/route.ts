@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { applyPaymentStatus, approveCashPayment, failPayment, getPayment, newPayment, paymentByMpId, paymentClientAddress, paymentDevice, paymentDiagnostics, priceFor, reopenPaymentWindow, saveMercadoPago } from "@/lib/payments-store";
-import { isAdminRequest } from "@/lib/admin-auth";
-import { queuePaymentWindow } from "@/lib/operations-store";
+import { applyPaymentStatus, approveCashPayment, failPayment, getPayment, newCashPayment, newPayment, paymentByMpId, paymentClientAddress, paymentDevice, paymentDiagnostics, priceFor, reopenPaymentWindow, saveMercadoPago } from "@/lib/payments-store";
+import { isAdminRequest,operatorFromRequest } from "@/lib/admin-auth";
+import { deviceDashboard,queuePaymentWindow } from "@/lib/operations-store";
 import { assertTrustedOrigin, enforceRateLimit, handleApiError, HttpError, readJson, validMac } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,7 @@ async function responsePayload(response:Response){const raw=await response.text(
 
 async function reconcile(localId: string) {
   const local = getPayment(localId);
+  if (local?.status === "paid_cash") return local;
   if (!local?.mp_payment_id) return local;
   const remote = await mpPayment(String(local.mp_payment_id));
   if (String(remote.external_reference) !== local.id || Math.abs(Number(remote.transaction_amount) - Number(local.amount)) > .001) throw new Error("Pagamento divergente");
@@ -42,7 +43,7 @@ type Ctx = { params: Promise<{ path: string[] }> };
 export async function GET(request: Request, ctx: Ctx) {
   try {
     const { path } = await ctx.params;
-    if(path[0]==="diagnostics")return isAdminRequest(request)?json({payments:paymentDiagnostics()}):json({error:"Não autorizado"},401);
+    if(path[0]==="diagnostics"){const admin=isAdminRequest(request),operator=operatorFromRequest(request),deviceId=path[1];if(!admin&&!operator)return json({error:"Não autorizado"},401);if(deviceId&&!deviceDashboard(deviceId,admin?undefined:operator!))return json({error:"Sem acesso"},403);return json({payments:paymentDiagnostics(deviceId)})}
     if (path[0] === "config" && path[1]) { enforceRateLimit(request, "payment-config", 60, 60_000); const price = priceFor(Number(path[1])); return price ? json({ enabled: !!token(), minutes: Number(path[1]), price }) : json({ error: "Plano sem preço" }, 404); }
     if (path[0] === "status" && path[1]) { enforceRateLimit(request, "payment-status", 30, 60_000, path[1]); const payment = await reconcile(path[1]); if (!payment) return json({ error: "Pagamento não encontrado" }, 404); return json({ id: payment.id, status: payment.status, released: !!payment.released }); }
     return json({ error: "Rota não encontrada" }, 404);
@@ -52,8 +53,9 @@ export async function GET(request: Request, ctx: Ctx) {
 export async function POST(request: Request, ctx: Ctx) {
   try {
     const { path } = await ctx.params;
-    if(path[0]==="reopen"&&path[1]){assertTrustedOrigin(request);if(!isAdminRequest(request))return json({error:"Não autorizado"},401);enforceRateLimit(request,"reopen-payment",30,60_000);return reopenPaymentWindow(path[1])?json({status:"queued",minutes:2}):json({error:"Pagamento já liberado ou dispositivo sem IP ativo"},409)}
-    if(path[0]==="cash"&&path[1]){assertTrustedOrigin(request);if(!isAdminRequest(request))return json({error:"Não autorizado"},401);enforceRateLimit(request,"cash-payment",30,60_000);return approveCashPayment(path[1])?json({status:"paid_cash",released:true}):json({error:"Pagamento inexistente ou já liberado"},409)}
+    if(path[0]==="reopen"&&path[1]){assertTrustedOrigin(request);const admin=isAdminRequest(request),operator=operatorFromRequest(request),payment=getPayment(path[1]);if(!payment||(!admin&&!operator)||!deviceDashboard(payment.device_id,admin?undefined:operator!))return json({error:"Não autorizado"},401);enforceRateLimit(request,"reopen-payment",30,60_000);return reopenPaymentWindow(path[1])?json({status:"queued",minutes:2}):json({error:"Pagamento já liberado ou dispositivo sem IP ativo"},409)}
+    if(path[0]==="cash"&&path[1]){assertTrustedOrigin(request);const admin=isAdminRequest(request),operator=operatorFromRequest(request),payment=getPayment(path[1]);if(!payment||(!admin&&!operator)||!deviceDashboard(payment.device_id,admin?undefined:operator!))return json({error:"Não autorizado"},401);enforceRateLimit(request,"cash-payment",30,60_000);return approveCashPayment(path[1])?json({status:"paid_cash",released:true}):json({error:"Pagamento inexistente ou já liberado"},409)}
+    if(path[0]==="cash-request"){assertTrustedOrigin(request);enforceRateLimit(request,"cash-request",5,10*60_000);const body=await readJson<Record<string,unknown>>(request,4096),minutes=Number(body.minutes),amount=priceFor(minutes),mac=validMac(body.mac),deviceId=String(body.deviceId||""),device=paymentDevice(deviceId);if(!amount||!device||device.mode!=="self"||!mac)throw new HttpError(400,"Dados do pedido inválidos");const id=newCashPayment(device.id,mac,minutes,amount);return json({id,minutes,amount,status:"cash_pending"},201)}
     if (path[0] === "create") {
       assertTrustedOrigin(request); enforceRateLimit(request, "payment-create", 5, 10 * 60_000);
       if (!token()) return json({ error: "Mercado Pago não configurado" }, 503);

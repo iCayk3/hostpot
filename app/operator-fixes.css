@@ -5,6 +5,17 @@
 .active-row > *, .admin-access-row > * { min-width:0; }
 .active-row > span:not(.session-actions), .admin-access-row > span:not(.session-actions) { overflow-wrap:anywhere; }
 .session-actions { position:relative; z-index:1; flex-wrap:wrap; }
+.operator-payment-row { display:grid; grid-template-columns:minmax(180px,1fr) minmax(90px,.45fr) minmax(210px,auto); align-items:center; gap:18px; min-height:62px; border-top:1px solid #edf0ec; color:#788681; font-size:10px; }
+.operator-payment-row > span { min-width:0; }
+.operator-payment-row > span:first-child { display:flex; flex-direction:column; gap:4px; }
+.operator-payment-row strong { color:#243d34; }
+.operator-payment-row small { color:#89968f; }
+.operator-payment-row > span:last-child { display:flex; justify-content:flex-end; }
+.operator-payment-status { overflow-wrap:anywhere; }
+.operator-payments .payment-actions { display:flex; justify-content:flex-end; gap:7px; white-space:nowrap; }
+.operator-payments .payment-actions button { min-height:32px; cursor:pointer; border-radius:9px; padding:7px 11px; font-size:9px; font-weight:800; }
+.operator-payments .payment-reopen-button { border:1px solid #cbd9d2; background:#fff; color:#315e4f; }
+.operator-payments .payment-cash-button { border:1px solid #143c31; background:#143c31; color:#fff; }
 @media (max-width:1050px) {
   .active-row:has(.session-actions), .admin-access-row { grid-template-columns:minmax(140px,1.2fr) minmax(150px,1fr) minmax(85px,.7fr) minmax(150px,1fr); }
   .active-row:has(.session-actions) .session-actions, .admin-access-row .session-actions { grid-column:1/-1; justify-content:flex-start; margin-top:3px; }
@@ -14,4 +25,6 @@
   .ops-user-actions { margin-left:auto; }
   .ops-user-actions .ops-online, .ops-user-actions .ops-offline { display:none; }
   .active-row:has(.session-actions), .admin-access-row { grid-template-columns:1fr 1fr; }
+  .operator-payment-row { grid-template-columns:1fr; padding:12px 0; gap:8px; }
+  .operator-payment-row > span:last-child, .operator-payments .payment-actions { justify-content:flex-start; }
 }

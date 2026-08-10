@@ -1,0 +1,9 @@
+.payment-methods { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:18px; }
+.payment-methods button { min-height:92px; cursor:pointer; border:1px solid #d4dfd7; border-radius:13px; background:#f7faf7; color:#17372d; padding:16px 12px; transition:transform .15s ease,border-color .15s ease,background .15s ease; }
+.payment-methods button:hover { transform:translateY(-2px); border-color:#77ae99; background:#eef7f1; }
+.payment-methods button strong,.payment-methods button small { display:block; }
+.payment-methods button strong { margin-bottom:7px; font-size:14px; }
+.payment-methods button small { color:#7d8b85; font-size:9px; line-height:1.4; }
+.payment-back { margin-top:9px!important; border:1px solid #d5ded8!important; background:#fff!important; color:#52645d!important; }
+.cash-waiting p { color:#71817b; line-height:1.6; }
+@media(max-width:480px){.payment-methods{grid-template-columns:1fr}}

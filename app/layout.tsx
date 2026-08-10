@@ -3,6 +3,7 @@ import { Manrope, Outfit } from "next/font/google";
 import "./globals.css";
 import "./operator-fixes.css";
 import "./payment-diagnostics.css";
+import "./payment-methods.css";
 
 const manrope = Manrope({ variable: "--font-body", subsets: ["latin"] });
 const outfit = Outfit({ variable: "--font-display", subsets: ["latin"] });
