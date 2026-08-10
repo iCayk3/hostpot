@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { applyPaymentStatus, approveCashPayment, failPayment, getPayment, newPayment, paymentByMpId, paymentClientAddress, paymentDevice, paymentDiagnostics, priceFor, saveMercadoPago } from "@/lib/payments-store";
+import { applyPaymentStatus, approveCashPayment, failPayment, getPayment, newPayment, paymentByMpId, paymentClientAddress, paymentDevice, paymentDiagnostics, priceFor, reopenPaymentWindow, saveMercadoPago } from "@/lib/payments-store";
 import { isAdminRequest } from "@/lib/admin-auth";
 import { queuePaymentWindow } from "@/lib/operations-store";
 import { assertTrustedOrigin, enforceRateLimit, handleApiError, HttpError, readJson, validMac } from "@/lib/security";
@@ -52,6 +52,7 @@ export async function GET(request: Request, ctx: Ctx) {
 export async function POST(request: Request, ctx: Ctx) {
   try {
     const { path } = await ctx.params;
+    if(path[0]==="reopen"&&path[1]){assertTrustedOrigin(request);if(!isAdminRequest(request))return json({error:"Não autorizado"},401);enforceRateLimit(request,"reopen-payment",30,60_000);return reopenPaymentWindow(path[1])?json({status:"queued",minutes:2}):json({error:"Pagamento já liberado ou dispositivo sem IP ativo"},409)}
     if(path[0]==="cash"&&path[1]){assertTrustedOrigin(request);if(!isAdminRequest(request))return json({error:"Não autorizado"},401);enforceRateLimit(request,"cash-payment",30,60_000);return approveCashPayment(path[1])?json({status:"paid_cash",released:true}):json({error:"Pagamento inexistente ou já liberado"},409)}
     if (path[0] === "create") {
       assertTrustedOrigin(request); enforceRateLimit(request, "payment-create", 5, 10 * 60_000);
@@ -59,7 +60,7 @@ export async function POST(request: Request, ctx: Ctx) {
       const body = await readJson<Record<string, unknown>>(request, 4_096), minutes = Number(body.minutes), amount = priceFor(minutes), mac = validMac(body.mac),deviceId=String(body.deviceId||""),address=String(body.address||paymentClientAddress(deviceId,String(body.mac||"").toUpperCase())),email = String(body.email || "").trim().toLowerCase(), device = paymentDevice(deviceId);
       if (!amount || !device || device.mode !== "self" || !mac || email.length > 254 || !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(address) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Dados da compra inválidos");
       const id = newPayment(device.id, mac, minutes, amount, email), base = String(process.env.PUBLIC_BASE_URL).replace(/\/$/, "");
-      queuePaymentWindow(device.id,address);
+      queuePaymentWindow(device.id,address,mac);
       try {
         const response = await fetch("https://api.mercadopago.com/v1/payments", { method: "POST", headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", "X-Idempotency-Key": id }, body: JSON.stringify({ transaction_amount: amount, description: `Wi-Fi ${minutes} minutos - ${device.identity}`, payment_method_id: "pix", external_reference: id, notification_url: `${base}/api/payments/webhook`, payer: { email } }), signal: AbortSignal.timeout(15_000) });
         const payload = await responsePayload(response);

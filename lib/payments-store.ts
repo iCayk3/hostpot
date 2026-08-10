@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { database as db } from "./database";
-import { queueRelease } from "./operations-store";
+import { queuePaymentWindow, queueRelease } from "./operations-store";
 
 db.exec(`CREATE TABLE IF NOT EXISTS pix_payments (id TEXT PRIMARY KEY,device_id TEXT NOT NULL,mac TEXT NOT NULL,minutes INTEGER NOT NULL,amount REAL NOT NULL,email TEXT NOT NULL,mp_payment_id TEXT,status TEXT NOT NULL,qr_code TEXT,qr_base64 TEXT,ticket_url TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,released INTEGER NOT NULL DEFAULT 0)`);
 const paymentColumns=db.prepare("PRAGMA table_info(pix_payments)").all() as Array<{name:string}>;
@@ -17,3 +17,4 @@ export function paymentByMpId(mpId:string){return db.prepare("SELECT * FROM pix_
 export function applyPaymentStatus(id:string,status:string){db.prepare("UPDATE pix_payments SET status=?,updated_at=? WHERE id=?").run(status,now(),id);if(status!=="approved")return;const changed=db.prepare("UPDATE pix_payments SET released=1 WHERE id=? AND released=0").run(id);if(changed.changes){const payment=getPayment(id);queueRelease(payment.device_id,payment.mac,Number(payment.minutes),"mercadopago")}}
 export function paymentDiagnostics(){return db.prepare(`SELECT p.id,p.mac,p.minutes,p.amount,p.status,p.released,p.mp_payment_id,p.last_error,p.created_at,p.updated_at,d.identity FROM pix_payments p JOIN devices d ON d.id=p.device_id ORDER BY p.created_at DESC LIMIT 50`).all()}
 export function approveCashPayment(id:string){const payment=getPayment(id);if(!payment||payment.released)return false;const changed=db.prepare("UPDATE pix_payments SET status='paid_cash',released=1,last_error=NULL,updated_at=? WHERE id=? AND released=0").run(now(),id);if(!changed.changes)return false;return !!queueRelease(payment.device_id,payment.mac,Number(payment.minutes),"cash-admin")}
+export function reopenPaymentWindow(id:string){const payment=getPayment(id);if(!payment||payment.released)return false;const address=paymentClientAddress(payment.device_id,payment.mac);if(!address)return false;return !!queuePaymentWindow(payment.device_id,address,payment.mac)}
