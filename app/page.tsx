@@ -41,6 +41,7 @@ export default function Home() {
   const [authChecked,setAuthChecked]=useState(false);
   const [overviewData,setOverviewData]=useState<{totals:{routers:number;active:number;hosts:number;updated_at:string|null};sessions:Array<{identity:string;username:string;address:string;mac:string;uptime:string;time_left:string}>}>({totals:{routers:0,active:0,hosts:0,updated_at:null},sessions:[]});
   const [paymentDiagnostics,setPaymentDiagnostics]=useState<Array<{id:string;identity:string;mac:string;minutes:number;amount:number;status:string;released:number;mp_payment_id:string|null;last_error:string|null;created_at:string}>>([]);
+  const [paymentPage,setPaymentPage]=useState(1);
   const [routerConfig, setRouterConfig] = useState<RouterConfig>({
     identity: "MK-CONNECTA-01", wan: "ether1", management: "ether2", guests: "ether3,ether4,ether5",
     guestSubnet: "10.50.0.0/24", guestGateway: "10.50.0.1", guestPool: "10.50.0.10-10.50.0.254",
@@ -74,6 +75,7 @@ export default function Home() {
     fetch("/api/auth/session", { cache: "no-store" }).then((response) => response.json()).then((payload: { authenticated: boolean }) => setAdminAuthenticated(payload.authenticated)).catch(() => {}).finally(()=>setAuthChecked(true));
   }, []);
   useEffect(()=>{if(view!=="admin"||!adminAuthenticated)return;const load=()=>Promise.all([fetch("/api/operations/overview",{cache:"no-store"}).then(r=>r.ok?r.json():null),fetch("/api/payments/diagnostics",{cache:"no-store"}).then(r=>r.ok?r.json():null)]).then(([overview,payments])=>{if(overview)setOverviewData(overview);if(payments)setPaymentDiagnostics(payments.payments||[])});load();const t=window.setInterval(load,10000);return()=>window.clearInterval(t)},[view,adminAuthenticated]);
+  useEffect(()=>{setPaymentPage(page=>Math.min(page,Math.max(1,Math.ceil(paymentDiagnostics.length/10))))},[paymentDiagnostics.length]);
 
   function openAdministration() {
     if (adminAuthenticated) return setView("admin");
@@ -296,10 +298,11 @@ export default function Home() {
               <article><span className="stat-icon orange">⌁</span><small>Hosts aguardando</small><strong>{overviewData.totals.hosts}</strong><em>Dados recebidos do HotSpot</em></article>
             </div>
             <article className="sessions-card">
-              <div className="section-heading"><div><h2>Homologação Mercado Pago</h2><p>Últimas tentativas Pix e resposta técnica recebida pelo backend.</p></div></div>
+              <div className="section-heading"><div><h2>Gestão de pagamentos</h2><p>Acompanhe cobranças, recebimentos, liberações e eventuais falhas de processamento.</p></div><button className="text-button" onClick={()=>window.location.href="/financeiro"}>Ver relatório financeiro →</button></div>
               <div className="session-table payment-diagnostics-table">
                 <div className="table-row table-head payment-row"><span>ROTEADOR / MAC</span><span>PLANO</span><span>STATUS</span><span>ERRO / ID MP</span><span>AÇÕES</span></div>
-                {paymentDiagnostics.length===0?<div className="empty">Nenhuma tentativa de pagamento registrada.</div>:paymentDiagnostics.map(payment=><div className="table-row payment-row" key={payment.id}><span><strong>{payment.identity}</strong><small>{payment.mac}</small></span><span>{payment.minutes} min · {Number(payment.amount).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span><span><b className={payment.status==="approved"||payment.status==="paid_cash"?"status-active":""}>{payment.status}</b></span><span className="payment-reference" title={payment.last_error||payment.mp_payment_id||""}>{payment.last_error||payment.mp_payment_id||(payment.status==="cash_pending"?"Aguardando pagamento no caixa":"Aguardando resposta")}</span><span className="payment-action-cell">{payment.released?<b className="status-active">Liberado</b>:<span className="payment-actions">{payment.mp_payment_id&&<button className="payment-reopen-button" onClick={()=>reopenPayment(payment)}>+2 min</button>}<button className="payment-cash-button" onClick={()=>receiveCash(payment)}>Recebi em espécie</button></span>}</span></div>)}
+                {paymentDiagnostics.length===0?<div className="empty">Nenhum pagamento registrado.</div>:paymentDiagnostics.slice((paymentPage-1)*10,paymentPage*10).map(payment=><div className="table-row payment-row" key={payment.id}><span><strong>{payment.identity}</strong><small>{payment.mac}</small></span><span>{payment.minutes} min · {Number(payment.amount).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span><span><b className={payment.status==="approved"||payment.status==="paid_cash"?"status-active":""}>{payment.status}</b></span><span className="payment-reference" title={payment.last_error||payment.mp_payment_id||""}>{payment.last_error||payment.mp_payment_id||(payment.status==="cash_pending"?"Aguardando pagamento no caixa":"Aguardando resposta")}</span><span className="payment-action-cell">{payment.released?<b className="status-active">Liberado</b>:<span className="payment-actions">{payment.mp_payment_id&&<button className="payment-reopen-button" onClick={()=>reopenPayment(payment)}>+2 min</button>}<button className="payment-cash-button" onClick={()=>receiveCash(payment)}>Recebi em espécie</button></span>}</span></div>)}
+                {paymentDiagnostics.length>10&&<div className="payment-pagination"><span>Exibindo {(paymentPage-1)*10+1}–{Math.min(paymentPage*10,paymentDiagnostics.length)} de {paymentDiagnostics.length}</span><div><button disabled={paymentPage===1} onClick={()=>setPaymentPage(page=>Math.max(1,page-1))}>← Anterior</button><b>Página {paymentPage} de {Math.ceil(paymentDiagnostics.length/10)}</b><button disabled={paymentPage>=Math.ceil(paymentDiagnostics.length/10)} onClick={()=>setPaymentPage(page=>Math.min(Math.ceil(paymentDiagnostics.length/10),page+1))}>Próxima →</button></div></div>}
               </div>
             </article>
 

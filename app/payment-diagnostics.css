@@ -73,3 +73,8 @@
   border-color: #0c2b23;
   background: #0c2b23;
 }
+.payment-pagination { min-width:900px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 2px 4px; border-top:1px solid #edf0ec; color:#87938e; font-size:9px; }
+.payment-pagination>div { display:flex; align-items:center; gap:10px; }
+.payment-pagination button { cursor:pointer; border:1px solid #d4ded7; border-radius:8px; background:#fff; color:#315e4f; padding:8px 11px; font-size:9px; font-weight:800; }
+.payment-pagination button:disabled { cursor:not-allowed; opacity:.4; }
+.payment-pagination b { color:#52635c; font-size:9px; }
