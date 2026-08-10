@@ -1,0 +1,75 @@
+.payment-diagnostics-table {
+  overflow-x: auto;
+}
+
+.payment-diagnostics-table .payment-row {
+  grid-template-columns: minmax(175px, 1.25fr) minmax(115px, .75fr) minmax(90px, .55fr) minmax(210px, 1.1fr) minmax(205px, auto);
+  min-width: 900px;
+  gap: 18px;
+  padding: 10px 2px;
+}
+
+.payment-diagnostics-table .payment-row > span {
+  min-width: 0;
+}
+
+.payment-diagnostics-table .payment-row > span:first-child {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.payment-reference {
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.payment-action-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.payment-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.payment-diagnostics-table .payment-actions button {
+  min-height: 32px;
+  cursor: pointer;
+  border-radius: 9px;
+  padding: 7px 11px;
+  font-size: 9px;
+  font-weight: 800;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+
+.payment-diagnostics-table .payment-actions button:hover {
+  transform: translateY(-1px);
+}
+
+.payment-diagnostics-table .payment-reopen-button {
+  border: 1px solid #cbd9d2;
+  background: #fff;
+  color: #315e4f;
+}
+
+.payment-diagnostics-table .payment-reopen-button:hover {
+  border-color: #8fb8a7;
+  background: #f2f8f4;
+}
+
+.payment-diagnostics-table .payment-cash-button {
+  border: 1px solid #143c31;
+  background: #143c31;
+  color: #fff;
+}
+
+.payment-diagnostics-table .payment-cash-button:hover {
+  border-color: #0c2b23;
+  background: #0c2b23;
+}
