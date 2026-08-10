@@ -1,4 +1,4 @@
-import { cookieSecurity,createOperatorSession,isAdminRequest,operatorCookie,operatorFromRequest } from "@/lib/admin-auth";
+import { adminCookie,cookieSecurity,createAdminSession,createOperatorSession,isAdminRequest,operatorCookie,operatorFromRequest,validAdminCredentials } from "@/lib/admin-auth";
 import { adminOverview,agentTokenHash,allOperationalDevices,authenticateOperator,createOperator,deviceDashboard,getOperator,listOperators,nextCommand,operatorDevices,queueRelease,queueTerminate,saveTelemetry,setClientLabel } from "@/lib/operations-store";
 import { assertTrustedOrigin,enforceRateLimit,handleApiError,readJson,readText } from "@/lib/security";
 export const dynamic="force-dynamic";
@@ -17,7 +17,7 @@ export async function GET(request:Request,ctx:Ctx){try{const{path}=await ctx.par
  return json({error:"Rota não encontrada"},404)}catch(error){return handleApiError(error)}}
 
 export async function POST(request:Request,ctx:Ctx){try{const{path}=await ctx.params;
- if(path[0]==="login"){assertTrustedOrigin(request);const body=await readJson<{username?:string;password?:string}>(request,4096);enforceRateLimit(request,"operator-login",5,15*60_000,String(body.username||""));const user=authenticateOperator(body.username||"",body.password||"");if(!user)return json({error:"Credenciais inválidas"},401);const session=createOperatorSession(user.id);return json({user},200,{"Set-Cookie":`${operatorCookie}=${session.value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${session.maxAge}${cookieSecurity()}`})}
+ if(path[0]==="login"){assertTrustedOrigin(request);const body=await readJson<{username?:string;password?:string}>(request,4096);enforceRateLimit(request,"operator-login",5,15*60_000,String(body.username||""));if(validAdminCredentials(body.username||"",body.password||"")){const session=createAdminSession();return json({user:{name:"Administrador",username:body.username,role:"admin"}},200,{"Set-Cookie":`${adminCookie}=${session.value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${session.maxAge}${cookieSecurity()}`})}const user=authenticateOperator(body.username||"",body.password||"");if(!user)return json({error:"Credenciais inválidas"},401);const session=createOperatorSession(user.id);return json({user:{...user,role:"operator"}},200,{"Set-Cookie":`${operatorCookie}=${session.value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${session.maxAge}${cookieSecurity()}`})}
  if(path[0]==="telemetry"&&path[1]){enforceRateLimit(request,"router-telemetry",10,60_000,path[1]);return saveTelemetry(agentTokenHash(path[1]),parse(await readText(request,262_144)))?json({status:"ok"}):json({error:"Token inválido"},401)}
  if(path[0]==="logout"){assertTrustedOrigin(request);return json({status:"logged-out"},200,{"Set-Cookie":`${operatorCookie}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${cookieSecurity()}`})}
  assertTrustedOrigin(request);
