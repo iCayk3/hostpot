@@ -5,6 +5,7 @@ import "./operator-fixes.css";
 import "./payment-diagnostics.css";
 import "./payment-methods.css";
 import "./financial.css";
+import "./users.css";
 
 const manrope = Manrope({ variable: "--font-body", subsets: ["latin"] });
 const outfit = Outfit({ variable: "--font-display", subsets: ["latin"] });

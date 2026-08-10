@@ -1,5 +1,5 @@
 import { adminCookie,cookieSecurity,createAdminSession,createOperatorSession,isAdminRequest,operatorCookie,operatorFromRequest,validAdminCredentials } from "@/lib/admin-auth";
-import { adminOverview,agentTokenHash,allOperationalDevices,authenticateOperator,createOperator,deviceDashboard,getOperator,listOperators,nextCommand,operatorDevices,queueRelease,queueTerminate,saveTelemetry,setClientLabel } from "@/lib/operations-store";
+import { adminOverview,agentTokenHash,allOperationalDevices,authenticateOperator,createOperator,deleteOperator,deviceDashboard,getOperator,listOperators,nextCommand,operatorDevices,queueRelease,queueTerminate,saveTelemetry,setClientLabel,updateOperatorDevices } from "@/lib/operations-store";
 import { assertTrustedOrigin,enforceRateLimit,handleApiError,readJson,readText } from "@/lib/security";
 export const dynamic="force-dynamic";
 const json=(body:unknown,status=200,headers:Record<string,string>={})=>Response.json(body,{status,headers:{"Cache-Control":"no-store",...headers}});
@@ -10,7 +10,7 @@ export async function GET(request:Request,ctx:Ctx){try{const{path}=await ctx.par
  if(path[0]==="operators")return isAdminRequest(request)?json({operators:listOperators()}):json({error:"Não autorizado"},401);
  if(path[0]==="overview")return isAdminRequest(request)?json(adminOverview()):json({error:"Não autorizado"},401);
  const admin=isAdminRequest(request),operatorId=operatorFromRequest(request);
- if(path[0]==="session")return json({authenticated:admin||!!operatorId,user:admin?{name:"Administrador",username:process.env.ADMIN_USERNAME||"admin",role:"admin"}:operatorId?getOperator(operatorId):null});
+ if(path[0]==="session"){const operator=operatorId?getOperator(operatorId):null;return json({authenticated:admin||!!operator,user:admin?{name:"Administrador",username:process.env.ADMIN_USERNAME||"admin",role:"admin"}:operator})}
  if(path[0]==="devices")return admin?json({devices:allOperationalDevices()}):operatorId?json({devices:operatorDevices(operatorId)}):json({error:"Não autorizado"},401);
  if(path[0]==="dashboard"&&path[1]){if(!admin&&!operatorId)return json({error:"Não autorizado"},401);const data=deviceDashboard(path[1],admin?undefined:operatorId!);return data?json(data):json({error:"Sem acesso"},403)}
  if(path[0]==="commands"&&path[1]){enforceRateLimit(request,"router-commands",20,60_000,path[1]);return new Response(nextCommand(agentTokenHash(path[1]),path[1],process.env.PUBLIC_BASE_URL||new URL(request.url).origin)||':error "token invalido"',{headers:{"Content-Type":"text/plain","Cache-Control":"no-store"}})}
@@ -21,6 +21,8 @@ export async function POST(request:Request,ctx:Ctx){try{const{path}=await ctx.pa
  if(path[0]==="telemetry"&&path[1]){enforceRateLimit(request,"router-telemetry",10,60_000,path[1]);return saveTelemetry(agentTokenHash(path[1]),parse(await readText(request,262_144)))?json({status:"ok"}):json({error:"Token inválido"},401)}
  if(path[0]==="logout"){assertTrustedOrigin(request);return json({status:"logged-out"},200,{"Set-Cookie":`${operatorCookie}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${cookieSecurity()}`})}
  assertTrustedOrigin(request);
+ if(path[0]==="operators"&&path[1]&&path[2]==="devices"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);const body=await readJson<{deviceIds?:string[]}>(request,8192);return updateOperatorDevices(path[1],Array.isArray(body.deviceIds)?body.deviceIds:[])?json({status:"saved"}):json({error:"Usuário não encontrado"},404)}
+ if(path[0]==="operators"&&path[1]&&path[2]==="delete"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);return deleteOperator(path[1])?json({status:"deleted"}):json({error:"Usuário não encontrado"},404)}
  if(path[0]==="operators"){if(!isAdminRequest(request))return json({error:"Não autorizado"},401);const body=await readJson<any>(request,16_384);try{return json({id:createOperator(body.name,body.username,body.password,Array.isArray(body.deviceIds)?body.deviceIds:[])},201)}catch{return json({error:"Usuário já existe ou dados inválidos"},400)}}
  const admin=isAdminRequest(request),operator=operatorFromRequest(request);if(!admin&&!operator)return json({error:"Não autorizado"},401);if(!path[1]||!deviceDashboard(path[1],admin?undefined:operator!))return json({error:"Sem acesso"},403);
  const body=await readJson<any>(request,4096);
