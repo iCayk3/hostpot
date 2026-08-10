@@ -62,8 +62,8 @@ export async function POST(request: Request, ctx: Ctx) {
     if (path[0] === "create") {
       assertTrustedOrigin(request); enforceRateLimit(request, "payment-create", 5, 10 * 60_000);
       if (!token()) return json({ error: "Mercado Pago não configurado" }, 503);
-      const body = await readJson<Record<string, unknown>>(request, 4_096), minutes = Number(body.minutes), amount = priceFor(minutes), mac = validMac(body.mac),deviceId=String(body.deviceId||""),address=String(body.address||paymentClientAddress(deviceId,String(body.mac||"").toUpperCase())),email = String(body.email || "").trim().toLowerCase(), device = paymentDevice(deviceId);
-      if (!amount || !device || device.mode !== "self" || !mac || email.length > 254 || !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(address) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Dados da compra inválidos");
+      const body = await readJson<Record<string, unknown>>(request, 4_096), minutes = Number(body.minutes), amount = priceFor(minutes), mac = validMac(body.mac),deviceId=String(body.deviceId||""),address=String(body.address||paymentClientAddress(deviceId,String(body.mac||"").toUpperCase())),email="pagamentos@conectamais.com.br",device = paymentDevice(deviceId);
+      if (!amount || !device || device.mode !== "self" || !mac || !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(address)) throw new HttpError(400, "Dados da compra inválidos");
       const id = newPayment(device.id, mac, minutes, amount, email), base = String(process.env.PUBLIC_BASE_URL).replace(/\/$/, "");
       queuePaymentWindow(device.id,address,mac);
       try {

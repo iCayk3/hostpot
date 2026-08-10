@@ -5,6 +5,7 @@
 .payment-methods button strong { margin-bottom:7px; font-size:14px; }
 .payment-methods button small { color:#7d8b85; font-size:9px; line-height:1.4; }
 .payment-back { margin-top:9px!important; border:1px solid #d5ded8!important; background:#fff!important; color:#52645d!important; }
+.payment-card form label { display:none; }
 .cash-waiting p { color:#71817b; line-height:1.6; }
 .payment-approved p { font-size:0; }
 .payment-approved p::after { content:"Seu acesso está sendo liberado. Aguarde alguns segundos e tente acessar a internet."; font-size:13px; }
