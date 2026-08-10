@@ -1,0 +1,17 @@
+.ops-user-actions { display:flex; min-width:0; align-items:center; justify-content:flex-end; gap:10px; }
+.ops-logout-button { flex:0 0 auto; cursor:pointer; border:1px solid #d7dfd9; border-radius:8px; background:#fff; color:#9b2929; padding:8px 12px; font-size:10px; font-weight:800; }
+.ops-logout-button:hover { border-color:#e6abab; background:#fff3f3; }
+.active-row:has(.session-actions), .admin-access-row { grid-template-columns:minmax(145px,1.15fr) minmax(150px,1fr) minmax(80px,.6fr) minmax(145px,1fr) minmax(170px,auto); column-gap:18px; }
+.active-row > *, .admin-access-row > * { min-width:0; }
+.active-row > span:not(.session-actions), .admin-access-row > span:not(.session-actions) { overflow-wrap:anywhere; }
+.session-actions { position:relative; z-index:1; flex-wrap:wrap; }
+@media (max-width:1050px) {
+  .active-row:has(.session-actions), .admin-access-row { grid-template-columns:minmax(140px,1.2fr) minmax(150px,1fr) minmax(85px,.7fr) minmax(150px,1fr); }
+  .active-row:has(.session-actions) .session-actions, .admin-access-row .session-actions { grid-column:1/-1; justify-content:flex-start; margin-top:3px; }
+}
+@media (max-width:760px) {
+  .ops-shell > header { height:auto; min-height:72px; flex-wrap:wrap; padding-top:10px; padding-bottom:10px; }
+  .ops-user-actions { margin-left:auto; }
+  .ops-user-actions .ops-online, .ops-user-actions .ops-offline { display:none; }
+  .active-row:has(.session-actions), .admin-access-row { grid-template-columns:1fr 1fr; }
+}

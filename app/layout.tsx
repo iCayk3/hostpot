@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Outfit } from "next/font/google";
 import "./globals.css";
+import "./operator-fixes.css";
 
 const manrope = Manrope({ variable: "--font-body", subsets: ["latin"] });
 const outfit = Outfit({ variable: "--font-display", subsets: ["latin"] });
